@@ -1,0 +1,30 @@
+# CXXtract2 Configuration
+# Copy this file to config.yaml and adjust paths for your environment.
+
+# Path to the ripgrep binary
+rg_binary: "rg.exe"
+
+# Path to the cpp-extractor binary
+extractor_binary: "./cpp-extractor/build/Release/cpp-extractor.exe"
+
+# Default path to compile_commands.json (can be overridden per-request)
+default_compile_commands: ""
+
+# Path to the SQLite database file
+db_path: "./cxxtract_cache.db"
+
+# Maximum number of concurrent cpp-extractor subprocesses
+max_parse_workers: 4
+
+# Maximum number of candidate files returned by ripgrep recall
+max_recall_files: 200
+
+# Timeout in seconds for a single ripgrep invocation
+recall_timeout_s: 30
+
+# Timeout in seconds for a single cpp-extractor invocation
+parse_timeout_s: 120
+
+# Host and port for the FastAPI server
+host: "127.0.0.1"
+port: 8000
