@@ -16,6 +16,7 @@ from cxxtract.api.routes import router
 from cxxtract.cache.db import close_db, init_db
 from cxxtract.config import Settings, load_settings
 from cxxtract.orchestrator.engine import OrchestratorEngine
+from cxxtract.orchestrator.rg_env import ensure_rg
 
 logger = logging.getLogger("cxxtract")
 
@@ -33,6 +34,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     settings: Settings = app.state.settings
     logger.info("CXXtract2 v%s starting up", __version__)
+
+    # Ensure ripgrep is available (auto-detect / auto-install)
+    rg_path, rg_version_info = ensure_rg(settings)
+    if rg_path:
+        app.state.rg_version = rg_version_info.raw if rg_version_info else ""
+        logger.info("ripgrep ready: %s", app.state.rg_version or rg_path)
+    else:
+        app.state.rg_version = ""
+        logger.warning(
+            "ripgrep not available — recall-based queries will not work, "
+            "but cached results can still be served"
+        )
 
     # Initialise database
     await init_db(settings.db_path)

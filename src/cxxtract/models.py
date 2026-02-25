@@ -107,6 +107,19 @@ class RecallHit(BaseModel):
     line_text: str
 
 
+class RecallResult(BaseModel):
+    """Structured result from a ripgrep recall invocation.
+
+    Carries both the hits and diagnostic metadata so the orchestrator
+    can report recall errors in the confidence envelope.
+    """
+    hits: list[RecallHit] = Field(default_factory=list)
+    error: Optional[str] = None
+    rg_exit_code: Optional[int] = None
+    elapsed_ms: float = 0.0
+    pattern: str = ""
+
+
 # ============================================================
 # Confidence envelope
 # ============================================================
@@ -118,6 +131,7 @@ class ConfidenceEnvelope(BaseModel):
     unparsed_files: list[str] = Field(default_factory=list)
     total_candidates: int = 0
     verified_ratio: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ============================================================
@@ -240,4 +254,5 @@ class HealthResponse(BaseModel):
     cache_file_count: int = 0
     cache_symbol_count: int = 0
     rg_available: bool = False
+    rg_version: str = ""
     extractor_available: bool = False

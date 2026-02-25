@@ -91,16 +91,30 @@ class OrchestratorEngine:
         symbol: str,
         repo_root: str,
         max_files: int,
-    ) -> list[str]:
-        """Stage 2: Run ripgrep recall and return unique file paths."""
-        hits = await run_recall(
+    ) -> tuple[list[str], list[str]]:
+        """Stage 2: Run ripgrep recall and return unique file paths.
+
+        Returns
+        -------
+        tuple of (file_paths, warnings)
+            file_paths: list of candidate file paths.
+            warnings: list of diagnostic strings from recall (may be empty).
+        """
+        result = await run_recall(
             symbol,
             repo_root,
             rg_binary=self._settings.rg_binary,
             max_files=max_files,
             timeout_s=self._settings.recall_timeout_s,
         )
-        return [h.file_path for h in hits]
+
+        warnings: list[str] = []
+        if result.error:
+            warnings.append(f"recall: {result.error}")
+        if result.elapsed_ms > 5000:
+            warnings.append(f"recall: slow query ({result.elapsed_ms:.0f}ms)")
+
+        return [h.file_path for h in result.hits], warnings
 
     async def _classify_files(
         self,
@@ -191,6 +205,7 @@ class OrchestratorEngine:
         stale_files: list[str],
         unparsed_files: list[str],
         failed_files: list[str],
+        warnings: Optional[list[str]] = None,
     ) -> ConfidenceEnvelope:
         """Stage 5a: Build the confidence envelope."""
         verified = fresh_files + newly_parsed
@@ -202,6 +217,7 @@ class OrchestratorEngine:
             unparsed_files=unparsed_files,
             total_candidates=total,
             verified_ratio=round(ratio, 4),
+            warnings=warnings or [],
         )
 
     # ------------------------------------------------------------------
@@ -215,7 +231,7 @@ class OrchestratorEngine:
         compile_db = self.get_compile_db(request.compile_commands)
 
         # Stage 2: Recall
-        candidate_files = await self._recall_candidates(
+        candidate_files, recall_warnings = await self._recall_candidates(
             request.symbol, request.repo_root, max_files
         )
 
@@ -256,7 +272,9 @@ class OrchestratorEngine:
             for r in ref_rows
         ]
 
-        confidence = self._build_confidence(fresh, newly_parsed, [], unparsed, failed)
+        confidence = self._build_confidence(
+            fresh, newly_parsed, [], unparsed, failed, warnings=recall_warnings,
+        )
 
         return ReferencesResponse(
             symbol=request.symbol,
@@ -272,7 +290,7 @@ class OrchestratorEngine:
         compile_db = self.get_compile_db(request.compile_commands)
 
         # Stage 2: Recall
-        candidate_files = await self._recall_candidates(
+        candidate_files, recall_warnings = await self._recall_candidates(
             request.symbol, request.repo_root, max_files
         )
 
@@ -300,7 +318,9 @@ class OrchestratorEngine:
             for d in definitions
         ]
 
-        confidence = self._build_confidence(fresh, newly_parsed, [], unparsed, failed)
+        confidence = self._build_confidence(
+            fresh, newly_parsed, [], unparsed, failed, warnings=recall_warnings,
+        )
 
         return DefinitionResponse(
             symbol=request.symbol,
@@ -315,7 +335,7 @@ class OrchestratorEngine:
         compile_db = self.get_compile_db(request.compile_commands)
 
         # Stage 2: Recall
-        candidate_files = await self._recall_candidates(
+        candidate_files, recall_warnings = await self._recall_candidates(
             request.symbol, request.repo_root, max_files
         )
 
@@ -356,7 +376,9 @@ class OrchestratorEngine:
                 for e in incoming
             )
 
-        confidence = self._build_confidence(fresh, newly_parsed, [], unparsed, failed)
+        confidence = self._build_confidence(
+            fresh, newly_parsed, [], unparsed, failed, warnings=recall_warnings,
+        )
 
         return CallGraphResponse(
             symbol=request.symbol,

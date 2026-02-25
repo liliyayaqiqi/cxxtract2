@@ -134,8 +134,9 @@ async def health(request: Request) -> HealthResponse:
     """Return service health, cache stats, and tool availability."""
     settings = request.app.state.settings
 
-    # Check rg availability
-    rg_available = shutil.which(settings.rg_binary) is not None
+    # Use the rg_version cached at startup rather than re-probing
+    rg_version: str = getattr(request.app.state, "rg_version", "")
+    rg_available = bool(rg_version) or shutil.which(settings.rg_binary) is not None
 
     # Check extractor availability
     extractor_available = shutil.which(settings.extractor_binary) is not None
@@ -154,5 +155,6 @@ async def health(request: Request) -> HealthResponse:
         cache_file_count=file_count,
         cache_symbol_count=symbol_count,
         rg_available=rg_available,
+        rg_version=rg_version,
         extractor_available=extractor_available,
     )
