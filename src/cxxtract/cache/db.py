@@ -41,7 +41,14 @@ async def init_db(db_path: str) -> aiosqlite.Connection:
     conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row  # type: ignore[assignment]
 
+    # Runtime PRAGMAs — must be set per-connection (not persisted by SQLite)
+    await conn.execute("PRAGMA foreign_keys = ON")
+    await conn.execute("PRAGMA busy_timeout = 5000")
+
     # Run migration DDL (idempotent thanks to IF NOT EXISTS)
+    # NOTE: executescript implicitly commits any pending transaction and
+    # then runs each statement.  PRAGMAs above survive because they are
+    # connection-level settings, not transactional state.
     ddl = _load_migration_sql()
     await conn.executescript(ddl)
     await conn.commit()

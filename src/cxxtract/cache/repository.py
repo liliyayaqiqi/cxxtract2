@@ -32,6 +32,7 @@ async def upsert_tracked_file(
     composite_hash: str,
     *,
     conn: Optional[aiosqlite.Connection] = None,
+    _commit: bool = True,
 ) -> None:
     """Insert or update a tracked file record."""
     db = conn or get_connection()
@@ -50,7 +51,8 @@ async def upsert_tracked_file(
         """,
         (file_path, content_hash, flags_hash, includes_hash, composite_hash, now),
     )
-    await db.commit()
+    if _commit:
+        await db.commit()
 
 
 async def get_tracked_file(
@@ -130,6 +132,7 @@ async def upsert_symbols(
     symbols: list[ExtractedSymbol],
     *,
     conn: Optional[aiosqlite.Connection] = None,
+    _commit: bool = True,
 ) -> None:
     """Replace all symbols for *file_path* with fresh data."""
     db = conn or get_connection()
@@ -146,7 +149,8 @@ async def upsert_symbols(
                 for s in symbols
             ],
         )
-    await db.commit()
+    if _commit:
+        await db.commit()
 
 
 async def get_symbols_by_file(
@@ -215,6 +219,7 @@ async def upsert_references(
     references: list[ExtractedReference],
     *,
     conn: Optional[aiosqlite.Connection] = None,
+    _commit: bool = True,
 ) -> None:
     """Replace all references originating from *file_path* with fresh data."""
     db = conn or get_connection()
@@ -231,7 +236,8 @@ async def upsert_references(
                 for r in references
             ],
         )
-    await db.commit()
+    if _commit:
+        await db.commit()
 
 
 async def get_references_for_symbol(
@@ -274,6 +280,7 @@ async def upsert_call_edges(
     edges: list[ExtractedCallEdge],
     *,
     conn: Optional[aiosqlite.Connection] = None,
+    _commit: bool = True,
 ) -> None:
     """Replace all call edges originating from *file_path* with fresh data."""
     db = conn or get_connection()
@@ -290,7 +297,8 @@ async def upsert_call_edges(
                 for e in edges
             ],
         )
-    await db.commit()
+    if _commit:
+        await db.commit()
 
 
 async def get_call_edges_for_caller(
@@ -332,6 +340,7 @@ async def upsert_include_deps(
     deps: list[ExtractedIncludeDep],
     *,
     conn: Optional[aiosqlite.Connection] = None,
+    _commit: bool = True,
 ) -> None:
     """Replace all include deps for *file_path* with fresh data."""
     db = conn or get_connection()
@@ -344,7 +353,23 @@ async def upsert_include_deps(
             """,
             [(file_path, d.path, d.depth) for d in deps],
         )
-    await db.commit()
+    if _commit:
+        await db.commit()
+
+
+async def get_include_deps(
+    file_path: str,
+    *,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> list[dict[str, Any]]:
+    """Return all include dependencies for *file_path*."""
+    db = conn or get_connection()
+    cursor = await db.execute(
+        "SELECT * FROM include_deps WHERE file_path = ?",
+        (file_path,),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]  # type: ignore[arg-type]
 
 
 # ============================================================
@@ -384,6 +409,21 @@ async def finish_parse_run(
     await db.commit()
 
 
+async def get_parse_runs(
+    file_path: str,
+    *,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> list[dict[str, Any]]:
+    """Return all parse run audit records for *file_path*, newest first."""
+    db = conn or get_connection()
+    cursor = await db.execute(
+        "SELECT * FROM parse_runs WHERE file_path = ? ORDER BY id DESC",
+        (file_path,),
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]  # type: ignore[arg-type]
+
+
 # ============================================================
 # Bulk upsert from ExtractorOutput
 # ============================================================
@@ -401,17 +441,31 @@ async def upsert_extractor_output(
 
     This is the primary entry point used by the orchestrator after a
     successful parse.  It updates the tracked file record and replaces
-    all associated facts atomically.
+    all associated facts **atomically** within a single transaction.
+
+    If any step fails the entire transaction is rolled back so no
+    partial data is left in the cache.
     """
-    await upsert_tracked_file(
-        output.file,
-        content_hash,
-        flags_hash,
-        includes_hash,
-        composite_hash,
-        conn=conn,
-    )
-    await upsert_symbols(output.file, output.symbols, conn=conn)
-    await upsert_references(output.file, output.references, conn=conn)
-    await upsert_call_edges(output.file, output.call_edges, conn=conn)
-    await upsert_include_deps(output.file, output.include_deps, conn=conn)
+    db = conn or get_connection()
+
+    # All sub-operations use _commit=False so we control the transaction.
+    try:
+        await upsert_tracked_file(
+            output.file,
+            content_hash,
+            flags_hash,
+            includes_hash,
+            composite_hash,
+            conn=db,
+            _commit=False,
+        )
+        await upsert_symbols(output.file, output.symbols, conn=db, _commit=False)
+        await upsert_references(output.file, output.references, conn=db, _commit=False)
+        await upsert_call_edges(output.file, output.call_edges, conn=db, _commit=False)
+        await upsert_include_deps(output.file, output.include_deps, conn=db, _commit=False)
+
+        # Single commit for the entire batch
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise

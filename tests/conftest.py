@@ -1,7 +1,8 @@
 """Shared test fixtures for CXXtract2."""
 
+from __future__ import annotations
+
 import asyncio
-import tempfile
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -37,3 +38,18 @@ def test_settings(tmp_dir: Path) -> Settings:
         recall_timeout_s=10,
         parse_timeout_s=30,
     )
+
+
+@pytest_asyncio.fixture
+async def db_conn():
+    """Provide a fresh in-memory SQLite database for each test.
+
+    Initialises the schema via ``init_db(":memory:")``, yields the
+    connection, and closes it afterwards.  Also resets the module-level
+    ``_connection`` global so tests are fully isolated.
+    """
+    from cxxtract.cache.db import close_db, init_db
+
+    conn = await init_db(":memory:")
+    yield conn
+    await close_db()
