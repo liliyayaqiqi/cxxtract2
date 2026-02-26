@@ -7,6 +7,9 @@ rg_binary: "rg.exe"
 # Path to the cpp-extractor binary
 extractor_binary: "./cpp-extractor/build/Release/cpp-extractor.exe"
 
+# Path to git binary used for repo sync
+git_binary: "git.exe"
+
 # Workspace manifest file name
 workspace_manifest_name: "workspace.yaml"
 
@@ -35,11 +38,24 @@ writer_batch_size: 10
 writer_retry_attempts: 3
 writer_retry_delay_ms: 200
 
+# Git sync worker settings
+git_sync_worker_count: 2
+git_sync_retry_attempts: 3
+git_sync_retry_delay_ms: 500
+git_sync_default_force_clean: true
+
 # Overlay metadata controls
 max_overlay_files: 5000
 max_overlay_rows: 2000000
 context_ttl_hours: 72
 context_disk_budget_bytes: 4294967296
+
+# sqlite-vec configuration for commit summary retrieval
+enable_vector_features: true
+# sqlite-vec is always resolved as ./bin/sqlite_vec.dll (auto-installed if missing)
+commit_embedding_dim: 1536
+commit_embedding_dtype: "float32"
+max_summary_chars: 16000
 
 # Host and port for the FastAPI server
 host: "127.0.0.1"

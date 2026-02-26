@@ -26,6 +26,8 @@ from cxxtract.models import (
     ExtractorOutput,
     FileSymbolsRequest,
     ParsePayload,
+    RepoSyncBatchRequest,
+    RepoSyncRequest,
     SymbolQueryRequest,
     WorkspaceRegisterRequest,
 )
@@ -213,3 +215,68 @@ class TestEngineCacheInvalidation:
 
         tracked = await repo.get_tracked_file(f"{ws}:baseline", file_key)
         assert tracked is None
+
+
+class TestEngineSyncApis:
+
+    async def test_sync_repo_enqueue_and_get(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, _file_key, _src = await _setup_workspace(engine, tmp_path)
+        manifest = tmp_path / "workspace.yaml"
+        manifest.write_text(
+            "\n".join(
+                [
+                    f"workspace_id: {ws}",
+                    "repos:",
+                    "  - repo_id: repoA",
+                    "    root: repos/repoA",
+                    "    compile_commands: repos/repoA/build/compile_commands.json",
+                    "    default_branch: main",
+                    "    depends_on: []",
+                    "    remote_url: https://gitlab.example.com/group/repoA.git",
+                    "    token_env_var: CXXTRACT_GITLAB_TOKEN_REPOA",
+                    "path_remaps: []",
+                ]
+            )
+        )
+        await engine.refresh_workspace_manifest(ws)
+
+        job = await engine.sync_repo(
+            ws,
+            RepoSyncRequest(repo_id="repoA", commit_sha="a" * 40, branch="main", force_clean=False),
+        )
+        assert job.workspace_id == ws
+        assert job.repo_id == "repoA"
+        assert job.status.value == "pending"
+        assert job.requested_force_clean is False
+
+        fetched = await engine.get_sync_job(job.job_id)
+        assert fetched.job_id == job.job_id
+
+    async def test_sync_batch_enqueue(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, _file_key, _src = await _setup_workspace(engine, tmp_path)
+        manifest = tmp_path / "workspace.yaml"
+        manifest.write_text(
+            "\n".join(
+                [
+                    f"workspace_id: {ws}",
+                    "repos:",
+                    "  - repo_id: repoA",
+                    "    root: repos/repoA",
+                    "    compile_commands: repos/repoA/build/compile_commands.json",
+                    "    default_branch: main",
+                    "    depends_on: []",
+                    "    remote_url: https://gitlab.example.com/group/repoA.git",
+                    "    token_env_var: CXXTRACT_GITLAB_TOKEN_REPOA",
+                    "path_remaps: []",
+                ]
+            )
+        )
+        await engine.refresh_workspace_manifest(ws)
+
+        batch = await engine.sync_batch(
+            ws,
+            RepoSyncBatchRequest(
+                targets=[RepoSyncRequest(repo_id="repoA", commit_sha="a" * 40)]
+            ),
+        )
+        assert len(batch.jobs) == 1

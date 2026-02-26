@@ -1,4 +1,4 @@
-"""Workspace-aware orchestration engine with baseline/overlay semantics (v3-only)."""
+"""Workspace-aware orchestration engine with v3 query + v4 sync/vector APIs."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ from cxxtract.config import Settings
 from cxxtract.models import (
     CacheInvalidateRequest,
     CacheInvalidateResponse,
+    CommitDiffSummaryGetResponse,
+    CommitDiffSummarySearchRequest,
+    CommitDiffSummarySearchResponse,
+    CommitDiffSummaryUpsertRequest,
+    CommitDiffSummaryRecord,
     CallGraphRequest,
     CallGraphResponse,
     ConfidenceEnvelope,
@@ -21,6 +26,12 @@ from cxxtract.models import (
     FileSymbolsRequest,
     FileSymbolsResponse,
     OverlayMode,
+    RepoSyncBatchRequest,
+    RepoSyncBatchResponse,
+    RepoSyncJobResponse,
+    RepoSyncJobStatus,
+    RepoSyncRequest,
+    RepoSyncStatusResponse,
     ReferencesResponse,
     SymbolQueryRequest,
     WebhookGitLabRequest,
@@ -29,6 +40,7 @@ from cxxtract.models import (
     WorkspaceRefreshResponse,
     WorkspaceRegisterRequest,
 )
+from cxxtract.orchestrator.services.commit_summary_service import CommitSummaryService
 from cxxtract.orchestrator.services.candidate_service import CandidateService
 from cxxtract.orchestrator.services.freshness_service import FreshnessService
 from cxxtract.orchestrator.services.query_read_service import QueryReadService
@@ -62,6 +74,12 @@ class OrchestratorEngine:
         self._candidate = CandidateService(settings)
         self._freshness = FreshnessService(settings, self._writer)
         self._reader = QueryReadService()
+        self._commit_summaries = CommitSummaryService(settings)
+
+    @property
+    def workspace_context_service(self) -> WorkspaceContextService:
+        """Expose workspace service for background workers."""
+        return self._workspace_context
 
     @staticmethod
     def _confidence(
@@ -371,18 +389,157 @@ class OrchestratorEngine:
             message="expired" if expired else "context not found",
         )
 
+    @staticmethod
+    def _sync_job_model(row: dict) -> RepoSyncJobResponse:
+        return RepoSyncJobResponse(
+            job_id=str(row["id"]),
+            workspace_id=str(row["workspace_id"]),
+            repo_id=str(row["repo_id"]),
+            requested_commit_sha=str(row["requested_commit_sha"]),
+            requested_branch=str(row.get("requested_branch", "")),
+            requested_force_clean=bool(int(row.get("requested_force_clean", 1))),
+            resolved_commit_sha=str(row.get("resolved_commit_sha", "")),
+            status=RepoSyncJobStatus(str(row.get("status", RepoSyncJobStatus.PENDING.value))),
+            attempts=int(row.get("attempts", 0)),
+            max_attempts=int(row.get("max_attempts", 0)),
+            error_code=str(row.get("error_code", "")),
+            error_message=str(row.get("error_message", "")),
+            created_at=str(row.get("created_at", "")),
+            updated_at=str(row.get("updated_at", "")),
+            started_at=str(row.get("started_at", "")),
+            finished_at=str(row.get("finished_at", "")),
+        )
+
+    async def sync_repo(self, workspace_id: str, request: RepoSyncRequest) -> RepoSyncJobResponse:
+        _ws, manifest = await self._workspace_context.resolve_workspace(workspace_id)
+        repo_cfg = manifest.repo_map().get(request.repo_id)
+        if repo_cfg is None:
+            raise ValueError(f"repo not found in manifest: {request.repo_id}")
+        if not repo_cfg.remote_url:
+            raise ValueError(f"repo {request.repo_id} is not sync-enabled (remote_url missing)")
+
+        job_id = uuid4().hex
+        await repo.insert_repo_sync_job(
+            job_id=job_id,
+            workspace_id=workspace_id,
+            repo_id=request.repo_id,
+            requested_commit_sha=request.commit_sha,
+            requested_branch=request.branch,
+            requested_force_clean=request.force_clean,
+            max_attempts=self._settings.git_sync_retry_attempts,
+        )
+        row = await repo.get_repo_sync_job(job_id)
+        assert row is not None
+        return self._sync_job_model(row)
+
+    async def sync_batch(self, workspace_id: str, request: RepoSyncBatchRequest) -> RepoSyncBatchResponse:
+        jobs: list[RepoSyncJobResponse] = []
+        for target in request.targets:
+            jobs.append(await self.sync_repo(workspace_id, target))
+        return RepoSyncBatchResponse(jobs=jobs)
+
+    async def get_sync_job(self, job_id: str) -> RepoSyncJobResponse:
+        row = await repo.get_repo_sync_job(job_id)
+        if row is None:
+            raise ValueError(f"sync job not found: {job_id}")
+        return self._sync_job_model(row)
+
+    async def get_repo_sync_status(self, workspace_id: str, repo_id: str) -> RepoSyncStatusResponse:
+        await self._workspace_context.resolve_workspace(workspace_id)
+        row = await repo.get_repo_sync_state(workspace_id, repo_id)
+        if row is None:
+            return RepoSyncStatusResponse(workspace_id=workspace_id, repo_id=repo_id)
+        return RepoSyncStatusResponse(
+            workspace_id=workspace_id,
+            repo_id=repo_id,
+            last_synced_commit_sha=str(row.get("last_synced_commit_sha", "")),
+            last_synced_branch=str(row.get("last_synced_branch", "")),
+            last_success_at=str(row.get("last_success_at", "")),
+            last_failure_at=str(row.get("last_failure_at", "")),
+            last_error_code=str(row.get("last_error_code", "")),
+            last_error_message=str(row.get("last_error_message", "")),
+        )
+
+    async def upsert_commit_diff_summary(
+        self,
+        request: CommitDiffSummaryUpsertRequest,
+    ) -> CommitDiffSummaryRecord:
+        await self._workspace_context.resolve_workspace(request.workspace_id)
+        return await self._commit_summaries.upsert_summary_with_embedding(request)
+
+    async def search_commit_diff_summaries(
+        self,
+        request: CommitDiffSummarySearchRequest,
+    ) -> CommitDiffSummarySearchResponse:
+        if request.workspace_id:
+            await self._workspace_context.resolve_workspace(request.workspace_id)
+        return await self._commit_summaries.search_summaries(request)
+
+    async def get_commit_diff_summary(
+        self,
+        workspace_id: str,
+        repo_id: str,
+        commit_sha: str,
+        *,
+        include_embedding: bool = False,
+    ) -> CommitDiffSummaryGetResponse:
+        await self._workspace_context.resolve_workspace(workspace_id)
+        return await self._commit_summaries.get_summary(
+            workspace_id,
+            repo_id,
+            commit_sha,
+            include_embedding=include_embedding,
+        )
+
     async def ingest_gitlab_webhook(self, request: WebhookGitLabRequest) -> WebhookGitLabResponse:
         job_id = uuid4().hex
+        workspace_id = str(request.payload.get("workspace_id", ""))
+        repo_id = str(request.payload.get("repo_id", ""))
+        event_sha = str(
+            request.payload.get("event_sha")
+            or request.payload.get("commit_sha")
+            or request.payload.get("checkout_sha")
+            or ""
+        )
+        branch = str(
+            request.payload.get("branch")
+            or request.payload.get("ref")
+            or ""
+        )
+        if branch.startswith("refs/heads/"):
+            branch = branch[len("refs/heads/") :]
+
         await repo.insert_index_job(
             job_id=job_id,
-            workspace_id=request.payload.get("workspace_id", ""),
-            repo_id=request.payload.get("repo_id", ""),
+            workspace_id=workspace_id,
+            repo_id=repo_id,
             context_id=request.payload.get("context_id", ""),
             event_type=request.event_type,
-            event_sha=request.payload.get("event_sha", ""),
+            event_sha=event_sha,
         )
+
+        sync_job_id = ""
+        if workspace_id and repo_id and len(event_sha) == 40:
+            try:
+                sync_req = RepoSyncRequest(
+                    repo_id=repo_id,
+                    commit_sha=event_sha,
+                    branch=branch,
+                    force_clean=self._settings.git_sync_default_force_clean,
+                )
+                sync_job = await self.sync_repo(workspace_id, sync_req)
+                sync_job_id = sync_job.job_id
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue sync job from webhook workspace=%s repo=%s sha=%s",
+                    workspace_id,
+                    repo_id,
+                    event_sha,
+                )
+
         return WebhookGitLabResponse(
             accepted=True,
             index_job_id=job_id,
+            sync_job_id=sync_job_id,
             message="Webhook accepted and index job created",
         )

@@ -76,8 +76,11 @@ async def replace_workspace_repos(
     if repos:
         await db.executemany(
             """
-            INSERT INTO repos (workspace_id, repo_id, root, compile_commands, default_branch, depends_on_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO repos (
+                workspace_id, repo_id, root, compile_commands, default_branch, depends_on_json,
+                remote_url, token_env_var, project_path
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -87,6 +90,9 @@ async def replace_workspace_repos(
                     r.get("compile_commands", ""),
                     r.get("default_branch", "main"),
                     json.dumps(r.get("depends_on", [])),
+                    r.get("remote_url", ""),
+                    r.get("token_env_var", ""),
+                    r.get("project_path", ""),
                 )
                 for r in repos
             ],
@@ -882,3 +888,436 @@ async def insert_index_job(
         (job_id, workspace_id, repo_id, context_id, event_type, event_sha, now, now),
     )
     await db.commit()
+
+
+async def get_repo(
+    workspace_id: str,
+    repo_id: str,
+    *,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> Optional[dict[str, Any]]:
+    db = conn or get_connection()
+    cur = await db.execute(
+        "SELECT * FROM repos WHERE workspace_id = ? AND repo_id = ?",
+        (workspace_id, repo_id),
+    )
+    row = await cur.fetchone()
+    if row is None:
+        return None
+    out = dict(row)  # type: ignore[arg-type]
+    try:
+        out["depends_on"] = json.loads(out.get("depends_on_json", "[]"))
+    except json.JSONDecodeError:
+        out["depends_on"] = []
+    return out
+
+
+async def insert_repo_sync_job(
+    *,
+    job_id: str,
+    workspace_id: str,
+    repo_id: str,
+    requested_commit_sha: str,
+    requested_branch: str = "",
+    requested_force_clean: bool = True,
+    max_attempts: int = 3,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> None:
+    db = conn or get_connection()
+    now = _utc_now()
+    await db.execute(
+        """
+        INSERT INTO repo_sync_jobs (
+            id, workspace_id, repo_id, requested_branch, requested_commit_sha,
+            requested_force_clean, status, attempts, max_attempts, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+        """,
+        (
+            job_id,
+            workspace_id,
+            repo_id,
+            requested_branch,
+            requested_commit_sha,
+            1 if requested_force_clean else 0,
+            max(1, max_attempts),
+            now,
+            now,
+        ),
+    )
+    await db.commit()
+
+
+async def get_repo_sync_job(
+    job_id: str,
+    *,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> Optional[dict[str, Any]]:
+    db = conn or get_connection()
+    cur = await db.execute("SELECT * FROM repo_sync_jobs WHERE id = ?", (job_id,))
+    row = await cur.fetchone()
+    return dict(row) if row else None  # type: ignore[arg-type]
+
+
+async def lease_next_repo_sync_job(
+    *,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> Optional[dict[str, Any]]:
+    db = conn or get_connection()
+    now = _utc_now()
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        cur = await db.execute(
+            """
+            SELECT *
+            FROM repo_sync_jobs
+            WHERE status IN ('pending', 'failed')
+              AND attempts < max_attempts
+            ORDER BY created_at ASC
+            LIMIT 1
+            """
+        )
+        row = await cur.fetchone()
+        if row is None:
+            await db.execute("COMMIT")
+            return None
+
+        job = dict(row)  # type: ignore[arg-type]
+        await db.execute(
+            """
+            UPDATE repo_sync_jobs
+            SET status = 'running',
+                attempts = attempts + 1,
+                started_at = CASE WHEN started_at = '' THEN ? ELSE started_at END,
+                updated_at = ?,
+                error_code = '',
+                error_message = ''
+            WHERE id = ?
+            """,
+            (now, now, job["id"]),
+        )
+        await db.execute("COMMIT")
+        return await get_repo_sync_job(str(job["id"]), conn=db)
+    except Exception:
+        await db.execute("ROLLBACK")
+        raise
+
+
+async def mark_repo_sync_job_done(
+    *,
+    job_id: str,
+    resolved_commit_sha: str,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> None:
+    db = conn or get_connection()
+    now = _utc_now()
+    await db.execute(
+        """
+        UPDATE repo_sync_jobs
+        SET status = 'done',
+            resolved_commit_sha = ?,
+            updated_at = ?,
+            finished_at = ?,
+            error_code = '',
+            error_message = ''
+        WHERE id = ?
+        """,
+        (resolved_commit_sha, now, now, job_id),
+    )
+    await db.commit()
+
+
+async def mark_repo_sync_job_failed(
+    *,
+    job_id: str,
+    error_code: str,
+    error_message: str,
+    dead_letter: bool = False,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> None:
+    db = conn or get_connection()
+    now = _utc_now()
+    status = "dead_letter" if dead_letter else "failed"
+    await db.execute(
+        """
+        UPDATE repo_sync_jobs
+        SET status = ?,
+            updated_at = ?,
+            finished_at = CASE WHEN ? = 'dead_letter' THEN ? ELSE finished_at END,
+            error_code = ?,
+            error_message = ?
+        WHERE id = ?
+        """,
+        (status, now, status, now, error_code, error_message[:4000], job_id),
+    )
+    await db.commit()
+
+
+async def upsert_repo_sync_state(
+    *,
+    workspace_id: str,
+    repo_id: str,
+    last_synced_commit_sha: str = "",
+    last_synced_branch: str = "",
+    success: bool = True,
+    error_code: str = "",
+    error_message: str = "",
+    conn: Optional[aiosqlite.Connection] = None,
+) -> None:
+    db = conn or get_connection()
+    now = _utc_now()
+    last_success_at = now if success else ""
+    last_failure_at = now if not success else ""
+    await db.execute(
+        """
+        INSERT INTO repo_sync_state (
+            workspace_id, repo_id, last_synced_commit_sha, last_synced_branch,
+            last_success_at, last_failure_at, last_error_code, last_error_message, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, repo_id) DO UPDATE SET
+            last_synced_commit_sha = CASE WHEN excluded.last_synced_commit_sha != '' THEN excluded.last_synced_commit_sha ELSE repo_sync_state.last_synced_commit_sha END,
+            last_synced_branch = CASE WHEN excluded.last_synced_branch != '' THEN excluded.last_synced_branch ELSE repo_sync_state.last_synced_branch END,
+            last_success_at = CASE WHEN excluded.last_success_at != '' THEN excluded.last_success_at ELSE repo_sync_state.last_success_at END,
+            last_failure_at = CASE WHEN excluded.last_failure_at != '' THEN excluded.last_failure_at ELSE repo_sync_state.last_failure_at END,
+            last_error_code = excluded.last_error_code,
+            last_error_message = excluded.last_error_message,
+            updated_at = excluded.updated_at
+        """,
+        (
+            workspace_id,
+            repo_id,
+            last_synced_commit_sha,
+            last_synced_branch,
+            last_success_at,
+            last_failure_at,
+            error_code,
+            error_message[:4000],
+            now,
+        ),
+    )
+    await db.commit()
+
+
+async def get_repo_sync_state(
+    workspace_id: str,
+    repo_id: str,
+    *,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> Optional[dict[str, Any]]:
+    db = conn or get_connection()
+    cur = await db.execute(
+        "SELECT * FROM repo_sync_state WHERE workspace_id = ? AND repo_id = ?",
+        (workspace_id, repo_id),
+    )
+    row = await cur.fetchone()
+    return dict(row) if row else None  # type: ignore[arg-type]
+
+
+def _embedding_to_blob(embedding: list[float]) -> bytes:
+    import array
+
+    arr = array.array("f", [float(v) for v in embedding])
+    return arr.tobytes()
+
+
+def _embedding_from_blob(blob: bytes) -> list[float]:
+    import array
+
+    arr = array.array("f")
+    arr.frombytes(blob)
+    return list(arr)
+
+
+async def upsert_commit_diff_summary(
+    *,
+    summary_id: str,
+    workspace_id: str,
+    repo_id: str,
+    commit_sha: str,
+    branch: str,
+    summary_text: str,
+    embedding_model: str,
+    embedding: list[float],
+    metadata: dict[str, Any],
+    conn: Optional[aiosqlite.Connection] = None,
+) -> None:
+    db = conn or get_connection()
+    now = _utc_now()
+    metadata_json = json.dumps(metadata, ensure_ascii=False)
+    await db.execute(
+        """
+        INSERT INTO commit_diff_summaries (
+            id, workspace_id, repo_id, commit_sha, branch, summary_text,
+            embedding_model, embedding_dim, metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, repo_id, commit_sha, embedding_model) DO UPDATE SET
+            id = excluded.id,
+            branch = excluded.branch,
+            summary_text = excluded.summary_text,
+            embedding_dim = excluded.embedding_dim,
+            metadata_json = excluded.metadata_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            summary_id,
+            workspace_id,
+            repo_id,
+            commit_sha,
+            branch,
+            summary_text,
+            embedding_model,
+            len(embedding),
+            metadata_json,
+            now,
+            now,
+        ),
+    )
+    cur_rowid = await db.execute(
+        "SELECT rowid FROM commit_diff_summaries WHERE id = ?",
+        (summary_id,),
+    )
+    rowid_row = await cur_rowid.fetchone()
+    if rowid_row is None:
+        raise RuntimeError(f"failed to resolve rowid for summary id {summary_id}")
+    summary_rowid = int(rowid_row[0])  # type: ignore[index]
+
+    await db.execute(
+        """
+        INSERT OR REPLACE INTO commit_diff_summary_vec(rowid, embedding)
+        VALUES (?, ?)
+        """,
+        (summary_rowid, _embedding_to_blob(embedding)),
+    )
+    await db.commit()
+
+
+async def get_commit_diff_summary(
+    workspace_id: str,
+    repo_id: str,
+    commit_sha: str,
+    *,
+    embedding_model: str = "",
+    include_embedding: bool = False,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> Optional[dict[str, Any]]:
+    db = conn or get_connection()
+    if embedding_model:
+        cur = await db.execute(
+            """
+            SELECT * FROM commit_diff_summaries
+            WHERE workspace_id = ? AND repo_id = ? AND commit_sha = ? AND embedding_model = ?
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (workspace_id, repo_id, commit_sha, embedding_model),
+        )
+    else:
+        cur = await db.execute(
+            """
+            SELECT * FROM commit_diff_summaries
+            WHERE workspace_id = ? AND repo_id = ? AND commit_sha = ?
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (workspace_id, repo_id, commit_sha),
+        )
+    row = await cur.fetchone()
+    if row is None:
+        return None
+    record = dict(row)  # type: ignore[arg-type]
+    try:
+        record["metadata"] = json.loads(record.get("metadata_json", "{}"))
+    except json.JSONDecodeError:
+        record["metadata"] = {}
+    if include_embedding:
+        cur_rowid = await db.execute("SELECT rowid FROM commit_diff_summaries WHERE id = ?", (record["id"],))
+        rowid_row = await cur_rowid.fetchone()
+        summary_rowid = int(rowid_row[0]) if rowid_row else -1  # type: ignore[index]
+        cur_vec = await db.execute(
+            "SELECT embedding FROM commit_diff_summary_vec WHERE rowid = ?",
+            (summary_rowid,),
+        )
+        vec_row = await cur_vec.fetchone()
+        if vec_row is not None and vec_row[0] is not None:  # type: ignore[index]
+            record["embedding"] = _embedding_from_blob(vec_row[0])  # type: ignore[index]
+        else:
+            record["embedding"] = []
+    return record
+
+
+async def search_commit_diff_summaries(
+    *,
+    query_embedding: list[float],
+    top_k: int,
+    workspace_id: str = "",
+    repo_ids: Optional[list[str]] = None,
+    branches: Optional[list[str]] = None,
+    commit_sha_prefix: str = "",
+    created_after: str = "",
+    score_threshold: float = 0.0,
+    conn: Optional[aiosqlite.Connection] = None,
+) -> list[dict[str, Any]]:
+    db = conn or get_connection()
+    candidate_limit = max(top_k * 5, top_k)
+
+    cur = await db.execute(
+        """
+        SELECT rowid, distance
+        FROM commit_diff_summary_vec
+        WHERE embedding MATCH ?
+          AND k = ?
+        """,
+        (_embedding_to_blob(query_embedding), candidate_limit),
+    )
+    vec_rows = await cur.fetchall()
+    if not vec_rows:
+        return []
+
+    distance_by_rowid: dict[int, float] = {}
+    for row in vec_rows:
+        sid = int(row[0])  # type: ignore[index]
+        dist = float(row[1])  # type: ignore[index]
+        distance_by_rowid[sid] = dist
+
+    ids = list(distance_by_rowid.keys())
+    placeholders = ",".join(["?"] * len(ids))
+    sql = f"SELECT rowid AS vec_rowid, * FROM commit_diff_summaries WHERE rowid IN ({placeholders})"
+    params: list[Any] = ids
+    if workspace_id:
+        sql += " AND workspace_id = ?"
+        params.append(workspace_id)
+    if repo_ids:
+        ph = ",".join(["?"] * len(repo_ids))
+        sql += f" AND repo_id IN ({ph})"
+        params.extend(repo_ids)
+    if branches:
+        ph = ",".join(["?"] * len(branches))
+        sql += f" AND branch IN ({ph})"
+        params.extend(branches)
+    if commit_sha_prefix:
+        sql += " AND commit_sha LIKE ?"
+        params.append(f"{commit_sha_prefix}%")
+    if created_after:
+        sql += " AND created_at >= ?"
+        params.append(created_after)
+
+    cur_meta = await db.execute(sql, params)
+    rows = await _fetch_all_dict(cur_meta)
+    ranked: list[dict[str, Any]] = []
+    for row in rows:
+        sid = int(row["vec_rowid"])
+        dist = distance_by_rowid.get(sid)
+        if dist is None:
+            continue
+        score = 1.0 / (1.0 + dist)
+        if score < score_threshold:
+            continue
+        row["score"] = score
+        try:
+            row["metadata"] = json.loads(row.get("metadata_json", "{}"))
+        except json.JSONDecodeError:
+            row["metadata"] = {}
+        ranked.append(row)
+
+    ranked.sort(key=lambda r: float(r["score"]), reverse=True)
+    return ranked[:top_k]

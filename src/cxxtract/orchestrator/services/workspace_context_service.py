@@ -45,6 +45,9 @@ class WorkspaceContextService:
                     "compile_commands": r.compile_commands,
                     "default_branch": r.default_branch,
                     "depends_on": r.depends_on,
+                    "remote_url": r.remote_url,
+                    "token_env_var": r.token_env_var,
+                    "project_path": r.project_path,
                 }
                 for r in mf.repos
             ],

@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SymbolKind(str, Enum):
@@ -72,6 +72,16 @@ class ContextFileStateKind(str, Enum):
     DELETED = "deleted"
     RENAMED = "renamed"
     UNCHANGED = "unchanged"
+
+
+class RepoSyncJobStatus(str, Enum):
+    """Lifecycle state for a repo sync job."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    DEAD_LETTER = "dead_letter"
 
 
 class ExtractedSymbol(BaseModel):
@@ -302,6 +312,148 @@ class WebhookGitLabRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class RepoSyncRequest(BaseModel):
+    """Request for deterministic repo sync at exact commit SHA."""
+
+    repo_id: str
+    commit_sha: str
+    branch: str = ""
+    force_clean: bool = True
+
+    @field_validator("commit_sha")
+    @classmethod
+    def _validate_commit_sha(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) != 40 or any(c not in "0123456789abcdefABCDEF" for c in value):
+            raise ValueError("commit_sha must be a 40-character hex SHA")
+        return value.lower()
+
+
+class RepoSyncBatchRequest(BaseModel):
+    """Batch sync request for multiple repositories."""
+
+    targets: list[RepoSyncRequest] = Field(..., min_length=1)
+
+
+class RepoSyncJobResponse(BaseModel):
+    """Response describing sync job status."""
+
+    job_id: str
+    workspace_id: str
+    repo_id: str
+    requested_commit_sha: str
+    requested_branch: str = ""
+    requested_force_clean: bool = True
+    resolved_commit_sha: str = ""
+    status: RepoSyncJobStatus
+    attempts: int = 0
+    max_attempts: int = 0
+    error_code: str = ""
+    error_message: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+
+
+class RepoSyncBatchResponse(BaseModel):
+    """Batch enqueue result."""
+
+    jobs: list[RepoSyncJobResponse] = Field(default_factory=list)
+
+
+class RepoSyncStatusResponse(BaseModel):
+    """Latest sync status for a repository."""
+
+    workspace_id: str
+    repo_id: str
+    last_synced_commit_sha: str = ""
+    last_synced_branch: str = ""
+    last_success_at: str = ""
+    last_failure_at: str = ""
+    last_error_code: str = ""
+    last_error_message: str = ""
+
+
+class CommitDiffSummaryUpsertRequest(BaseModel):
+    """Caller-provided merged commit diff summary and embedding."""
+
+    workspace_id: str
+    repo_id: str
+    commit_sha: str
+    branch: str = ""
+    summary_text: str
+    embedding_model: str
+    embedding: list[float]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("commit_sha")
+    @classmethod
+    def _validate_commit_sha(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) != 40 or any(c not in "0123456789abcdefABCDEF" for c in value):
+            raise ValueError("commit_sha must be a 40-character hex SHA")
+        return value.lower()
+
+
+class CommitDiffSummarySearchRequest(BaseModel):
+    """Top-k vector search over stored commit diff summaries."""
+
+    query_embedding: list[float]
+    top_k: int = Field(10, ge=1, le=100)
+    workspace_id: str
+    repo_ids: list[str] = Field(default_factory=list)
+    branches: list[str] = Field(default_factory=list)
+    commit_sha_prefix: str = ""
+    created_after: str = ""
+    score_threshold: float = 0.0
+
+
+class CommitDiffSummaryHit(BaseModel):
+    """Search hit entry."""
+
+    id: str
+    workspace_id: str
+    repo_id: str
+    commit_sha: str
+    branch: str
+    summary_text: str
+    embedding_model: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    score: float
+    created_at: str
+
+
+class CommitDiffSummarySearchResponse(BaseModel):
+    """Search response envelope."""
+
+    hits: list[CommitDiffSummaryHit] = Field(default_factory=list)
+
+
+class CommitDiffSummaryRecord(BaseModel):
+    """Stored summary record."""
+
+    id: str
+    workspace_id: str
+    repo_id: str
+    commit_sha: str
+    branch: str
+    summary_text: str
+    embedding_model: str
+    embedding_dim: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+    embedding: list[float] = Field(default_factory=list)
+
+
+class CommitDiffSummaryGetResponse(BaseModel):
+    """Fetch-by-key response."""
+
+    found: bool
+    record: Optional[CommitDiffSummaryRecord] = None
+
+
 class SymbolLocation(BaseModel):
     """A symbol definition location in a response."""
 
@@ -420,6 +572,7 @@ class WebhookGitLabResponse(BaseModel):
 
     accepted: bool
     index_job_id: str = ""
+    sync_job_id: str = ""
     message: str = ""
 
 
@@ -439,3 +592,7 @@ class HealthResponse(BaseModel):
     overlay_disk_usage_bytes: int = 0
     index_queue_depth: int = 0
     oldest_pending_job_age_s: float = 0.0
+    sync_queue_depth: int = 0
+    active_sync_jobs: int = 0
+    last_sync_failure_count_1h: int = 0
+    sqlite_vec_loaded: bool = False

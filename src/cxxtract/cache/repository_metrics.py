@@ -47,3 +47,31 @@ async def get_oldest_pending_job_age_s(*, conn: Optional[aiosqlite.Connection] =
     )
     row = await cur.fetchone()
     return float(row[0]) if row and row[0] is not None else 0.0  # type: ignore[index]
+
+
+async def get_repo_sync_queue_depth(*, conn: Optional[aiosqlite.Connection] = None) -> int:
+    db = conn or get_connection()
+    cur = await db.execute("SELECT COUNT(*) FROM repo_sync_jobs WHERE status IN ('pending', 'failed')")
+    row = await cur.fetchone()
+    return row[0] if row else 0  # type: ignore[index]
+
+
+async def get_active_sync_jobs(*, conn: Optional[aiosqlite.Connection] = None) -> int:
+    db = conn or get_connection()
+    cur = await db.execute("SELECT COUNT(*) FROM repo_sync_jobs WHERE status = 'running'")
+    row = await cur.fetchone()
+    return row[0] if row else 0  # type: ignore[index]
+
+
+async def get_sync_failures_last_hour(*, conn: Optional[aiosqlite.Connection] = None) -> int:
+    db = conn or get_connection()
+    cur = await db.execute(
+        """
+        SELECT COUNT(*)
+        FROM repo_sync_jobs
+        WHERE status IN ('failed', 'dead_letter')
+          AND updated_at >= datetime('now', '-1 hour')
+        """
+    )
+    row = await cur.fetchone()
+    return row[0] if row else 0  # type: ignore[index]

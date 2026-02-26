@@ -13,10 +13,12 @@ from fastapi import FastAPI
 
 from cxxtract import __version__
 from cxxtract.api.routes import router
-from cxxtract.cache.db import close_db, init_db
+from cxxtract.cache.db import close_db, init_db, is_sqlite_vec_loaded
 from cxxtract.config import Settings, load_settings
 from cxxtract.orchestrator.engine import OrchestratorEngine
 from cxxtract.orchestrator.rg_env import ensure_rg
+from cxxtract.orchestrator.sync_worker import SyncWorkerService
+from cxxtract.orchestrator.vec_env import ensure_sqlite_vec
 from cxxtract.orchestrator.writer import SingleWriterService
 
 logger = logging.getLogger("cxxtract")
@@ -48,8 +50,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "but cached results can still be served"
         )
 
+    # Ensure sqlite-vec is available (auto-detect/auto-install) when enabled
+    ensure_sqlite_vec(settings)
+
     # Initialise database
-    await init_db(settings.db_path)
+    await init_db(
+        settings.db_path,
+        enable_vector_features=settings.enable_vector_features,
+        commit_embedding_dim=settings.commit_embedding_dim,
+    )
+    app.state.sqlite_vec_loaded = is_sqlite_vec_loaded()
 
     # Create single writer and orchestrator
     writer = SingleWriterService(settings)
@@ -57,12 +67,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.writer = writer
     engine = OrchestratorEngine(settings, writer)
     app.state.engine = engine
+    sync_worker = SyncWorkerService(settings, engine.workspace_context_service)
+    await sync_worker.start()
+    app.state.sync_worker = sync_worker
 
     logger.info("Ready — listening on %s:%d", settings.host, settings.port)
     yield
 
     # Shutdown
     logger.info("Shutting down…")
+    sync_worker: SyncWorkerService = app.state.sync_worker
+    await sync_worker.stop()
     writer: SingleWriterService = app.state.writer
     await writer.stop()
     await close_db()

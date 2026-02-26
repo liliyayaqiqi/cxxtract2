@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 
 import aiosqlite
+import pytest
 
 from cxxtract.cache import repository as repo
 from cxxtract.cache.db import close_db, get_connection, init_db
@@ -54,6 +55,14 @@ class TestInitDb:
         db_mod._connection = None
         await close_db()
         db_mod._connection = saved
+
+    async def test_init_db_fails_when_vector_enabled_without_extension(self):
+        with pytest.raises(RuntimeError):
+            await init_db(
+                ":memory:",
+                enable_vector_features=True,
+                commit_embedding_dim=1536,
+            )
 
 
 class TestHashers:
@@ -233,3 +242,82 @@ class TestMetrics:
         )
         assert await repo.get_index_queue_depth() >= 1
         assert await repo.get_oldest_pending_job_age_s() >= -1.0
+
+    async def test_repo_sync_metrics(self, db_conn: aiosqlite.Connection, tmp_path: Path):
+        context_id = await _bootstrap_workspace(tmp_path)
+        await repo.insert_repo_sync_job(
+            job_id="sync-job-1",
+            workspace_id="ws_main",
+            repo_id="repoA",
+            requested_commit_sha="a" * 40,
+        )
+        assert await repo.get_repo_sync_queue_depth() >= 1
+        leased = await repo.lease_next_repo_sync_job()
+        assert leased is not None
+        assert leased["status"] == "running"
+        assert await repo.get_active_sync_jobs() >= 1
+
+
+class TestRepoSyncState:
+
+    async def test_repo_sync_job_lifecycle(self, db_conn: aiosqlite.Connection, tmp_path: Path):
+        await _bootstrap_workspace(tmp_path)
+        await repo.insert_repo_sync_job(
+            job_id="job-1",
+            workspace_id="ws_main",
+            repo_id="repoA",
+            requested_commit_sha="a" * 40,
+            requested_branch="main",
+            max_attempts=2,
+        )
+
+        leased = await repo.lease_next_repo_sync_job()
+        assert leased is not None
+        assert leased["id"] == "job-1"
+        assert leased["status"] == "running"
+        assert leased["attempts"] == 1
+
+        await repo.mark_repo_sync_job_failed(
+            job_id="job-1",
+            error_code="missing_token_env",
+            error_message="token missing",
+            dead_letter=False,
+        )
+        failed = await repo.get_repo_sync_job("job-1")
+        assert failed is not None
+        assert failed["status"] == "failed"
+        assert failed["error_code"] == "missing_token_env"
+
+        leased2 = await repo.lease_next_repo_sync_job()
+        assert leased2 is not None
+        assert leased2["attempts"] == 2
+
+        await repo.mark_repo_sync_job_done(job_id="job-1", resolved_commit_sha="b" * 40)
+        done = await repo.get_repo_sync_job("job-1")
+        assert done is not None
+        assert done["status"] == "done"
+        assert done["resolved_commit_sha"] == "b" * 40
+
+    async def test_repo_sync_state_upsert(self, db_conn: aiosqlite.Connection, tmp_path: Path):
+        await _bootstrap_workspace(tmp_path)
+        await repo.upsert_repo_sync_state(
+            workspace_id="ws_main",
+            repo_id="repoA",
+            success=False,
+            error_code="commit_not_found",
+            error_message="missing sha",
+        )
+        state = await repo.get_repo_sync_state("ws_main", "repoA")
+        assert state is not None
+        assert state["last_error_code"] == "commit_not_found"
+
+        await repo.upsert_repo_sync_state(
+            workspace_id="ws_main",
+            repo_id="repoA",
+            success=True,
+            last_synced_commit_sha="c" * 40,
+            last_synced_branch="main",
+        )
+        state2 = await repo.get_repo_sync_state("ws_main", "repoA")
+        assert state2 is not None
+        assert state2["last_synced_commit_sha"] == "c" * 40

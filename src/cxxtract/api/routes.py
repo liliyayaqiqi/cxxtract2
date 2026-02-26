@@ -6,15 +6,21 @@ import logging
 import shutil
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from cxxtract import __version__
 from cxxtract.cache import repository as repo
+from cxxtract.cache.db import is_sqlite_vec_loaded
 from cxxtract.models import (
     CacheInvalidateRequest,
     CacheInvalidateResponse,
     CallGraphRequest,
     CallGraphResponse,
+    CommitDiffSummaryGetResponse,
+    CommitDiffSummaryRecord,
+    CommitDiffSummarySearchRequest,
+    CommitDiffSummarySearchResponse,
+    CommitDiffSummaryUpsertRequest,
     ContextCreateOverlayRequest,
     ContextCreateOverlayResponse,
     ContextExpireResponse,
@@ -22,6 +28,11 @@ from cxxtract.models import (
     FileSymbolsRequest,
     FileSymbolsResponse,
     HealthResponse,
+    RepoSyncBatchRequest,
+    RepoSyncBatchResponse,
+    RepoSyncJobResponse,
+    RepoSyncRequest,
+    RepoSyncStatusResponse,
     ReferencesResponse,
     SymbolQueryRequest,
     WebhookGitLabRequest,
@@ -106,6 +117,107 @@ async def webhook_gitlab(body: WebhookGitLabRequest, engine: EngineDepends) -> W
     return await engine.ingest_gitlab_webhook(body)
 
 
+@router.post("/workspace/{workspace_id}/sync-repo", response_model=RepoSyncJobResponse, tags=["sync"])
+async def sync_repo(
+    workspace_id: str,
+    body: RepoSyncRequest,
+    engine: EngineDepends,
+) -> RepoSyncJobResponse:
+    try:
+        return await engine.sync_repo(workspace_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/workspace/{workspace_id}/sync-batch", response_model=RepoSyncBatchResponse, tags=["sync"])
+async def sync_batch(
+    workspace_id: str,
+    body: RepoSyncBatchRequest,
+    engine: EngineDepends,
+) -> RepoSyncBatchResponse:
+    try:
+        return await engine.sync_batch(workspace_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/sync-jobs/{job_id}", response_model=RepoSyncJobResponse, tags=["sync"])
+async def get_sync_job(job_id: str, engine: EngineDepends) -> RepoSyncJobResponse:
+    try:
+        return await engine.get_sync_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/workspace/{workspace_id}/repos/{repo_id}/sync-status",
+    response_model=RepoSyncStatusResponse,
+    tags=["sync"],
+)
+async def get_sync_status(workspace_id: str, repo_id: str, engine: EngineDepends) -> RepoSyncStatusResponse:
+    try:
+        return await engine.get_repo_sync_status(workspace_id, repo_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/commit-diff-summaries/upsert", response_model=CommitDiffSummaryRecord, tags=["vector"])
+async def upsert_commit_diff_summary(
+    body: CommitDiffSummaryUpsertRequest,
+    engine: EngineDepends,
+) -> CommitDiffSummaryRecord:
+    try:
+        return await engine.upsert_commit_diff_summary(body)
+    except RuntimeError as exc:
+        if str(exc) in {"vector_disabled", "vector_unavailable"}:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/commit-diff-summaries/search", response_model=CommitDiffSummarySearchResponse, tags=["vector"])
+async def search_commit_diff_summaries(
+    body: CommitDiffSummarySearchRequest,
+    engine: EngineDepends,
+) -> CommitDiffSummarySearchResponse:
+    try:
+        return await engine.search_commit_diff_summaries(body)
+    except RuntimeError as exc:
+        if str(exc) in {"vector_disabled", "vector_unavailable"}:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/commit-diff-summaries/{workspace_id}/{repo_id}/{commit_sha}",
+    response_model=CommitDiffSummaryGetResponse,
+    tags=["vector"],
+)
+async def get_commit_diff_summary(
+    workspace_id: str,
+    repo_id: str,
+    commit_sha: str,
+    engine: EngineDepends,
+    include_embedding: bool = Query(default=False),
+) -> CommitDiffSummaryGetResponse:
+    try:
+        return await engine.get_commit_diff_summary(
+            workspace_id,
+            repo_id,
+            commit_sha,
+            include_embedding=include_embedding,
+        )
+    except RuntimeError as exc:
+        if str(exc) in {"vector_disabled", "vector_unavailable"}:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/health", response_model=HealthResponse, tags=["health"])
 async def health(request: Request) -> HealthResponse:
     settings = request.app.state.settings
@@ -139,6 +251,18 @@ async def health(request: Request) -> HealthResponse:
         oldest_pending = await repo.get_oldest_pending_job_age_s()
     except Exception:
         oldest_pending = 0.0
+    try:
+        sync_queue_depth = await repo.get_repo_sync_queue_depth()
+    except Exception:
+        sync_queue_depth = 0
+    try:
+        active_sync_jobs = await repo.get_active_sync_jobs()
+    except Exception:
+        active_sync_jobs = 0
+    try:
+        sync_failures_1h = await repo.get_sync_failures_last_hour()
+    except Exception:
+        sync_failures_1h = 0
 
     return HealthResponse(
         status="ok",
@@ -154,4 +278,8 @@ async def health(request: Request) -> HealthResponse:
         overlay_disk_usage_bytes=overlay_disk,
         index_queue_depth=index_depth,
         oldest_pending_job_age_s=oldest_pending,
+        sync_queue_depth=sync_queue_depth,
+        active_sync_jobs=active_sync_jobs,
+        last_sync_failure_count_1h=sync_failures_1h,
+        sqlite_vec_loaded=is_sqlite_vec_loaded(),
     )

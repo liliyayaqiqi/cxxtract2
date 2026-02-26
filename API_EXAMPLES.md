@@ -1,4 +1,4 @@
-# API Examples (v3-only)
+# API Examples (v4)
 
 ## Query References
 
@@ -51,6 +51,59 @@ POST /cache/invalidate
   "workspace_id": "ws_main",
   "context_id": "ws_main:baseline",
   "file_keys": ["repoA:src/main.cpp"]
+}
+```
+
+## Sync Single Repo to Exact SHA
+
+```json
+POST /workspace/ws_main/sync-repo
+{
+  "repo_id": "repoA",
+  "commit_sha": "40hexsha40hexsha40hexsha40hexsha40hex",
+  "branch": "feature/x",
+  "force_clean": true
+}
+```
+
+## Sync Batch
+
+```json
+POST /workspace/ws_main/sync-batch
+{
+  "targets": [
+    {"repo_id": "repoA", "commit_sha": "40hex..."},
+    {"repo_id": "repoB", "commit_sha": "40hex...", "branch": "main"}
+  ]
+}
+```
+
+## Upsert Commit Diff Summary Embedding
+
+```json
+POST /commit-diff-summaries/upsert
+{
+  "workspace_id": "ws_main",
+  "repo_id": "repoA",
+  "commit_sha": "40hex...",
+  "branch": "main",
+  "summary_text": "Merged diff summary ...",
+  "embedding_model": "text-embedding-3-large",
+  "embedding": [0.01, -0.02],
+  "metadata": {"mr_iid": 123}
+}
+```
+
+## Search Commit Diff Summaries
+
+```json
+POST /commit-diff-summaries/search
+{
+  "query_embedding": [0.02, -0.01],
+  "top_k": 10,
+  "workspace_id": "ws_main",
+  "repo_ids": ["repoA"],
+  "branches": ["main"]
 }
 ```
 

@@ -13,9 +13,16 @@ from cxxtract.main import create_app
 from cxxtract.models import (
     CacheInvalidateResponse,
     CallGraphResponse,
+    CommitDiffSummaryGetResponse,
+    CommitDiffSummaryRecord,
+    CommitDiffSummarySearchResponse,
     ConfidenceEnvelope,
     DefinitionResponse,
     FileSymbolsResponse,
+    RepoSyncBatchResponse,
+    RepoSyncJobResponse,
+    RepoSyncJobStatus,
+    RepoSyncStatusResponse,
     ReferencesResponse,
 )
 
@@ -61,6 +68,55 @@ def mock_engine():
         invalidated_files=0,
         message="ok",
     ))
+    engine.sync_repo = AsyncMock(return_value=RepoSyncJobResponse(
+        job_id="job-1",
+        workspace_id="ws_main",
+        repo_id="repoA",
+        requested_commit_sha="a" * 40,
+        requested_branch="main",
+        status=RepoSyncJobStatus.PENDING,
+    ))
+    engine.sync_batch = AsyncMock(return_value=RepoSyncBatchResponse(
+        jobs=[
+            RepoSyncJobResponse(
+                job_id="job-1",
+                workspace_id="ws_main",
+                repo_id="repoA",
+                requested_commit_sha="a" * 40,
+                requested_branch="main",
+                status=RepoSyncJobStatus.PENDING,
+            )
+        ]
+    ))
+    engine.get_sync_job = AsyncMock(return_value=RepoSyncJobResponse(
+        job_id="job-1",
+        workspace_id="ws_main",
+        repo_id="repoA",
+        requested_commit_sha="a" * 40,
+        requested_branch="main",
+        status=RepoSyncJobStatus.DONE,
+    ))
+    engine.get_repo_sync_status = AsyncMock(return_value=RepoSyncStatusResponse(
+        workspace_id="ws_main",
+        repo_id="repoA",
+        last_synced_commit_sha="a" * 40,
+        last_synced_branch="main",
+    ))
+    engine.upsert_commit_diff_summary = AsyncMock(return_value=CommitDiffSummaryRecord(
+        id="sum-1",
+        workspace_id="ws_main",
+        repo_id="repoA",
+        commit_sha="a" * 40,
+        branch="main",
+        summary_text="test summary",
+        embedding_model="text-embedding-3-large",
+        embedding_dim=1536,
+        metadata={},
+        created_at="",
+        updated_at="",
+    ))
+    engine.search_commit_diff_summaries = AsyncMock(return_value=CommitDiffSummarySearchResponse(hits=[]))
+    engine.get_commit_diff_summary = AsyncMock(return_value=CommitDiffSummaryGetResponse(found=False, record=None))
     return engine
 
 
@@ -167,3 +223,73 @@ class TestLegacyFieldsRejected:
     async def test_query_requires_workspace_id(self, client: AsyncClient):
         resp = await client.post("/query/references", json={"symbol": "foo"})
         assert resp.status_code == 422
+
+
+class TestSyncAndVectorEndpoints:
+
+    async def test_sync_repo_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/workspace/ws_main/sync-repo",
+            json={"repo_id": "repoA", "commit_sha": "a" * 40, "branch": "main"},
+        )
+        assert resp.status_code == 200
+        mock_engine.sync_repo.assert_awaited_once()
+
+    async def test_sync_batch_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/workspace/ws_main/sync-batch",
+            json={"targets": [{"repo_id": "repoA", "commit_sha": "a" * 40}]},
+        )
+        assert resp.status_code == 200
+        mock_engine.sync_batch.assert_awaited_once()
+
+    async def test_sync_repo_rejects_short_sha(self, client: AsyncClient):
+        resp = await client.post(
+            "/workspace/ws_main/sync-repo",
+            json={"repo_id": "repoA", "commit_sha": "abc123"},
+        )
+        assert resp.status_code == 422
+
+    async def test_get_sync_job(self, client: AsyncClient, mock_engine):
+        resp = await client.get("/sync-jobs/job-1")
+        assert resp.status_code == 200
+        mock_engine.get_sync_job.assert_awaited_once()
+
+    async def test_get_sync_status(self, client: AsyncClient, mock_engine):
+        resp = await client.get("/workspace/ws_main/repos/repoA/sync-status")
+        assert resp.status_code == 200
+        mock_engine.get_repo_sync_status.assert_awaited_once()
+
+    async def test_commit_summary_upsert(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/commit-diff-summaries/upsert",
+            json={
+                "workspace_id": "ws_main",
+                "repo_id": "repoA",
+                "commit_sha": "a" * 40,
+                "branch": "main",
+                "summary_text": "summary",
+                "embedding_model": "text-embedding-3-large",
+                "embedding": [0.0] * 1536,
+                "metadata": {},
+            },
+        )
+        assert resp.status_code == 200
+        mock_engine.upsert_commit_diff_summary.assert_awaited_once()
+
+    async def test_commit_summary_search(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/commit-diff-summaries/search",
+            json={
+                "query_embedding": [0.0] * 1536,
+                "top_k": 5,
+                "workspace_id": "ws_main",
+            },
+        )
+        assert resp.status_code == 200
+        mock_engine.search_commit_diff_summaries.assert_awaited_once()
+
+    async def test_commit_summary_get(self, client: AsyncClient, mock_engine):
+        resp = await client.get(f"/commit-diff-summaries/ws_main/repoA/{'a'*40}")
+        assert resp.status_code == 200
+        mock_engine.get_commit_diff_summary.assert_awaited_once()

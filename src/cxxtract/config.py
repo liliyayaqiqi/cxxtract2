@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # -- External tool paths --------------------------------------------------
     rg_binary: str = "rg"
     extractor_binary: str = "./cpp-extractor/build/Release/cpp-extractor.exe"
+    git_binary: str = "git"
     default_compile_commands: str = ""
     workspace_manifest_name: str = "workspace.yaml"
 
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     writer_batch_size: int = 10
     writer_retry_attempts: int = 3
     writer_retry_delay_ms: int = 200
+    git_sync_worker_count: int = 2
+    git_sync_retry_attempts: int = 3
+    git_sync_retry_delay_ms: int = 500
+    git_sync_default_force_clean: bool = True
 
     # -- Server ---------------------------------------------------------------
     host: str = "127.0.0.1"
@@ -44,6 +49,12 @@ class Settings(BaseSettings):
     max_overlay_rows: int = 2_000_000
     context_ttl_hours: int = 72
     context_disk_budget_bytes: int = 4 * 1024 * 1024 * 1024
+
+    # -- Vector retrieval -----------------------------------------------------
+    enable_vector_features: bool = True
+    commit_embedding_dim: int = 1536
+    commit_embedding_dtype: str = "float32"
+    max_summary_chars: int = 16000
 
     model_config = {
         "env_prefix": "CXXTRACT_",

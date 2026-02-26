@@ -35,6 +35,7 @@ cxxtract_cache.db
 
 # ===== Config (user-local) =====
 config.yaml
+workspace.yaml
 
 # ===== IDE / Editor =====
 .vs/

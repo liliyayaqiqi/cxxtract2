@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 from typing import Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from cxxtract.models import ResolvedIncludeDep
 
@@ -19,6 +19,18 @@ class RepoManifest(BaseModel):
     compile_commands: str = ""
     default_branch: str = "main"
     depends_on: list[str] = Field(default_factory=list)
+    remote_url: str = ""
+    token_env_var: str = ""
+    project_path: str = ""
+
+    @model_validator(mode="after")
+    def _validate_sync_fields(self) -> "RepoManifest":
+        if self.remote_url:
+            if not self.remote_url.lower().startswith("https://"):
+                raise ValueError(f"repo {self.repo_id}: remote_url must be HTTPS")
+            if not self.token_env_var:
+                raise ValueError(f"repo {self.repo_id}: token_env_var is required when remote_url is set")
+        return self
 
 
 class PathRemap(BaseModel):
@@ -35,6 +47,15 @@ class WorkspaceManifest(BaseModel):
     workspace_id: str
     repos: list[RepoManifest] = Field(default_factory=list)
     path_remaps: list[PathRemap] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_repo_ids(self) -> "WorkspaceManifest":
+        seen: set[str] = set()
+        for repo in self.repos:
+            if repo.repo_id in seen:
+                raise ValueError(f"duplicate repo_id in manifest: {repo.repo_id}")
+            seen.add(repo.repo_id)
+        return self
 
     def repo_map(self) -> dict[str, RepoManifest]:
         return {r.repo_id: r for r in self.repos}
