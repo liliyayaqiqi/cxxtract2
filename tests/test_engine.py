@@ -20,12 +20,23 @@ from cxxtract.models import (
     CacheInvalidateRequest,
     CallGraphDirection,
     CallGraphRequest,
+    ClassifyFreshnessRequest,
     ExtractedCallEdge,
     ExtractedReference,
     ExtractedSymbol,
     ExtractorOutput,
+    FetchReferencesRequest,
+    FetchSymbolsRequest,
     FileSymbolsRequest,
+    GetCompileCommandRequest,
+    GetConfidenceRequest,
+    ListCandidatesRequest,
     ParsePayload,
+    ParseFileRequest,
+    ReadFileRequest,
+    RecallHit,
+    RecallResult,
+    RgSearchRequest,
     RepoSyncBatchRequest,
     RepoSyncAllRequest,
     RepoSyncRequest,
@@ -196,6 +207,97 @@ class TestEngineQueries:
 
         assert len(resp.symbols) == 1
         assert resp.symbols[0].qualified_name == "ns::foo"
+
+
+class TestEngineExploreApis:
+
+    async def test_explore_list_classify_fetch_and_confidence(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, file_key, src = await _setup_workspace(engine, tmp_path)
+        await _seed_payload(f"{ws}:baseline", file_key, src)
+
+        listed = await engine.explore_list_candidates(
+            ListCandidatesRequest(workspace_id=ws, symbol="foo")
+        )
+        assert file_key in listed.candidates
+
+        classified = await engine.explore_classify_freshness(
+            ClassifyFreshnessRequest(
+                workspace_id=ws,
+                candidate_file_keys=[file_key],
+            )
+        )
+        assert file_key in classified.fresh or file_key in classified.stale
+
+        symbols = await engine.explore_fetch_symbols(
+            FetchSymbolsRequest(
+                workspace_id=ws,
+                symbol="foo",
+                candidate_file_keys=[file_key],
+            )
+        )
+        assert len(symbols.symbols) >= 1
+
+        refs = await engine.explore_fetch_references(
+            FetchReferencesRequest(
+                workspace_id=ws,
+                symbol="foo",
+                candidate_file_keys=[file_key],
+            )
+        )
+        assert len(refs.references) >= 1
+
+        confidence = await engine.explore_get_confidence(
+            GetConfidenceRequest(verified_files=[file_key])
+        )
+        assert confidence.confidence.verified_ratio == 1.0
+
+    async def test_explore_read_file_and_compile_command(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, file_key, _src = await _setup_workspace(engine, tmp_path)
+
+        file_resp = await engine.explore_read_file(
+            ReadFileRequest(workspace_id=ws, file_key=file_key)
+        )
+        assert file_resp.file_key == file_key
+
+        cc_resp = await engine.explore_get_compile_command(
+            GetCompileCommandRequest(workspace_id=ws, file_key=file_key)
+        )
+        assert cc_resp.file_key == file_key
+        assert cc_resp.match_type.value in {"exact", "fallback", "missing"}
+
+    async def test_explore_parse_file_skip_fresh(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, file_key, src = await _setup_workspace(engine, tmp_path)
+        await _seed_payload(f"{ws}:baseline", file_key, src)
+
+        parsed = await engine.explore_parse_file(
+            ParseFileRequest(
+                workspace_id=ws,
+                file_keys=[file_key],
+                max_parse_workers=1,
+                timeout_s=5,
+                skip_if_fresh=True,
+            )
+        )
+        assert file_key in parsed.skipped_fresh_file_keys
+        assert parsed.failed_file_keys == []
+
+    async def test_explore_rg_search(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, file_key, src = await _setup_workspace(engine, tmp_path)
+        await _seed_payload(f"{ws}:baseline", file_key, src)
+
+        with patch(
+            "cxxtract.orchestrator.services.exploration_service.run_recall_query",
+            AsyncMock(
+                return_value=RecallResult(
+                    hits=[RecallHit(file_path=str(src), line_number=1, line_text="foo")],
+                    rg_exit_code=0,
+                )
+            ),
+        ):
+            resp = await engine.explore_rg_search(
+                RgSearchRequest(workspace_id=ws, query="foo")
+            )
+        assert resp.hits
 
 
 class TestEngineCacheInvalidation:

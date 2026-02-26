@@ -122,7 +122,40 @@ async def run_recall(
     RecallResult
         Structured result with hits, error info, exit code, and timing.
     """
-    pattern = build_symbol_pattern(symbol)
+    return await run_recall_query(
+        symbol,
+        repo_root,
+        mode="symbol",
+        rg_binary=rg_binary,
+        max_files=max_files,
+        timeout_s=timeout_s,
+        file_globs=file_globs,
+        context_lines=context_lines,
+        cancel_event=cancel_event,
+    )
+
+
+async def run_recall_query(
+    query: str,
+    repo_root: str,
+    *,
+    mode: str = "symbol",
+    rg_binary: str = "rg",
+    max_files: int = 200,
+    timeout_s: int = 30,
+    file_globs: Optional[list[str]] = None,
+    context_lines: int = 0,
+    cancel_event: Optional[asyncio.Event] = None,
+) -> RecallResult:
+    """Execute ripgrep from a caller-provided query mode."""
+    normalized_mode = (mode or "symbol").strip().lower()
+    if normalized_mode == "regex":
+        pattern = query
+    elif normalized_mode == "literal":
+        pattern = re.escape(query)
+    else:
+        pattern = build_symbol_pattern(query)
+
     return await _run_rg(
         pattern=pattern,
         repo_root=repo_root,

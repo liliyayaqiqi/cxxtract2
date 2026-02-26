@@ -16,6 +16,8 @@ from cxxtract.models import (
     CacheInvalidateResponse,
     CallGraphRequest,
     CallGraphResponse,
+    ClassifyFreshnessRequest,
+    ClassifyFreshnessResponse,
     CommitDiffSummaryGetResponse,
     CommitDiffSummaryRecord,
     CommitDiffSummarySearchRequest,
@@ -25,9 +27,25 @@ from cxxtract.models import (
     ContextCreateOverlayResponse,
     ContextExpireResponse,
     DefinitionResponse,
+    FetchCallEdgesRequest,
+    FetchCallEdgesResponse,
+    FetchReferencesRequest,
+    FetchReferencesResponse,
+    FetchSymbolsRequest,
+    FetchSymbolsResponse,
     FileSymbolsRequest,
     FileSymbolsResponse,
+    GetCompileCommandRequest,
+    GetCompileCommandResponse,
+    GetConfidenceRequest,
+    GetConfidenceResponse,
     HealthResponse,
+    ListCandidatesRequest,
+    ListCandidatesResponse,
+    ParseFileRequest,
+    ParseFileResponse,
+    ReadFileRequest,
+    ReadFileResponse,
     RepoSyncBatchRequest,
     RepoSyncBatchResponse,
     RepoSyncAllRequest,
@@ -36,6 +54,8 @@ from cxxtract.models import (
     RepoSyncRequest,
     RepoSyncStatusResponse,
     ReferencesResponse,
+    RgSearchRequest,
+    RgSearchResponse,
     SymbolQueryRequest,
     WebhookGitLabRequest,
     WebhookGitLabResponse,
@@ -75,6 +95,68 @@ async def query_call_graph(body: CallGraphRequest, engine: EngineDepends) -> Cal
 @router.post("/query/file-symbols", response_model=FileSymbolsResponse, tags=["query"])
 async def query_file_symbols(body: FileSymbolsRequest, engine: EngineDepends) -> FileSymbolsResponse:
     return await engine.query_file_symbols(body)
+
+
+@router.post("/explore/rg-search", response_model=RgSearchResponse, tags=["explore"])
+async def explore_rg_search(body: RgSearchRequest, engine: EngineDepends) -> RgSearchResponse:
+    return await engine.explore_rg_search(body)
+
+
+@router.post("/explore/read-file", response_model=ReadFileResponse, tags=["explore"])
+async def explore_read_file(body: ReadFileRequest, engine: EngineDepends) -> ReadFileResponse:
+    return await engine.explore_read_file(body)
+
+
+@router.post("/explore/get-compile-command", response_model=GetCompileCommandResponse, tags=["explore"])
+async def explore_get_compile_command(
+    body: GetCompileCommandRequest,
+    engine: EngineDepends,
+) -> GetCompileCommandResponse:
+    return await engine.explore_get_compile_command(body)
+
+
+@router.post("/explore/list-candidates", response_model=ListCandidatesResponse, tags=["explore"])
+async def explore_list_candidates(body: ListCandidatesRequest, engine: EngineDepends) -> ListCandidatesResponse:
+    return await engine.explore_list_candidates(body)
+
+
+@router.post("/explore/classify-freshness", response_model=ClassifyFreshnessResponse, tags=["explore"])
+async def explore_classify_freshness(
+    body: ClassifyFreshnessRequest,
+    engine: EngineDepends,
+) -> ClassifyFreshnessResponse:
+    return await engine.explore_classify_freshness(body)
+
+
+@router.post("/explore/parse-file", response_model=ParseFileResponse, tags=["explore"])
+async def explore_parse_file(body: ParseFileRequest, engine: EngineDepends) -> ParseFileResponse:
+    return await engine.explore_parse_file(body)
+
+
+@router.post("/explore/fetch-symbols", response_model=FetchSymbolsResponse, tags=["explore"])
+async def explore_fetch_symbols(body: FetchSymbolsRequest, engine: EngineDepends) -> FetchSymbolsResponse:
+    return await engine.explore_fetch_symbols(body)
+
+
+@router.post("/explore/fetch-references", response_model=FetchReferencesResponse, tags=["explore"])
+async def explore_fetch_references(
+    body: FetchReferencesRequest,
+    engine: EngineDepends,
+) -> FetchReferencesResponse:
+    return await engine.explore_fetch_references(body)
+
+
+@router.post("/explore/fetch-call-edges", response_model=FetchCallEdgesResponse, tags=["explore"])
+async def explore_fetch_call_edges(
+    body: FetchCallEdgesRequest,
+    engine: EngineDepends,
+) -> FetchCallEdgesResponse:
+    return await engine.explore_fetch_call_edges(body)
+
+
+@router.post("/explore/get-confidence", response_model=GetConfidenceResponse, tags=["explore"])
+async def explore_get_confidence(body: GetConfidenceRequest, engine: EngineDepends) -> GetConfidenceResponse:
+    return await engine.explore_get_confidence(body)
 
 
 @router.post("/cache/invalidate", response_model=CacheInvalidateResponse, tags=["cache"])

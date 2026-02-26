@@ -82,6 +82,10 @@ class SmokeRunner:
             ("query_definition", self.test_query_definition),
             ("query_call_graph", self.test_query_call_graph),
             ("query_file_symbols", self.test_query_file_symbols),
+            ("explore_list_candidates", self.test_explore_list_candidates),
+            ("explore_classify_freshness", self.test_explore_classify_freshness),
+            ("explore_fetch_references", self.test_explore_fetch_references),
+            ("explore_get_confidence", self.test_explore_get_confidence),
             ("cache_invalidate", self.test_cache_invalidate),
             ("webhook_gitlab", self.test_webhook_gitlab),
             ("sync_repo", self.test_sync_repo),
@@ -354,6 +358,72 @@ class SmokeRunner:
             status, body = self.client.post(
                 "/query/file-symbols",
                 {"workspace_id": self.args.workspace_id, "file_key": self.args.file_key},
+            )
+            self._expect(name, status, 200, body)
+            self._dump_response(name, body)
+            return self._ok(name)
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
+    def test_explore_list_candidates(self) -> TestResult:
+        name = "explore_list_candidates"
+        try:
+            self.ensure_workspace()
+            payload = self._query_payload_base(self.args.symbol)
+            payload["max_files"] = self.args.max_recall_files or 50
+            status, body = self.client.post("/explore/list-candidates", payload)
+            self._expect(name, status, 200, body)
+            self._dump_response(name, body)
+            return self._ok(name)
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
+    def test_explore_classify_freshness(self) -> TestResult:
+        name = "explore_classify_freshness"
+        try:
+            self.ensure_workspace()
+            status, listed = self.client.post("/explore/list-candidates", self._query_payload_base(self.args.symbol))
+            self._expect(name, status, 200, listed)
+            candidate_keys = listed.get("candidates", [])[:20]
+            status, body = self.client.post(
+                "/explore/classify-freshness",
+                {
+                    "workspace_id": self.args.workspace_id,
+                    "candidate_file_keys": candidate_keys,
+                },
+            )
+            self._expect(name, status, 200, body)
+            self._dump_response(name, body)
+            return self._ok(name)
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
+    def test_explore_fetch_references(self) -> TestResult:
+        name = "explore_fetch_references"
+        try:
+            self.ensure_workspace()
+            status, listed = self.client.post("/explore/list-candidates", self._query_payload_base(self.args.symbol))
+            self._expect(name, status, 200, listed)
+            status, body = self.client.post(
+                "/explore/fetch-references",
+                {
+                    "workspace_id": self.args.workspace_id,
+                    "symbol": self.args.symbol,
+                    "candidate_file_keys": listed.get("candidates", [])[:50],
+                },
+            )
+            self._expect(name, status, 200, body)
+            self._dump_response(name, body)
+            return self._ok(name)
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
+    def test_explore_get_confidence(self) -> TestResult:
+        name = "explore_get_confidence"
+        try:
+            status, body = self.client.post(
+                "/explore/get-confidence",
+                {"verified_files": [self.args.file_key]},
             )
             self._expect(name, status, 200, body)
             self._dump_response(name, body)

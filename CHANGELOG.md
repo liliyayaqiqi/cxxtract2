@@ -20,6 +20,19 @@
   - `POST /commit-diff-summaries/search`
   - `GET /commit-diff-summaries/{workspace_id}/{repo_id}/{commit_sha}`
 - Extended `/health` with sync and vector readiness metrics.
+- Added layered exploration APIs (additive):
+  - `POST /explore/rg-search`
+  - `POST /explore/read-file`
+  - `POST /explore/get-compile-command`
+  - `POST /explore/list-candidates`
+  - `POST /explore/classify-freshness`
+  - `POST /explore/parse-file`
+  - `POST /explore/fetch-symbols`
+  - `POST /explore/fetch-references`
+  - `POST /explore/fetch-call-edges`
+  - `POST /explore/get-confidence`
+- Added shared exploration metadata envelopes: `CostEnvelope`, `EvidenceItem`, `CoverageEnvelope`.
+- Added `ExplorationService` and reusable confidence builder for wrapper + primitive flows.
 
 ### Breaking (v3 hard cut)
 - Removed all legacy single-repo request compatibility fields (`repo_root`, `file_path`, `file_paths`).

@@ -13,18 +13,31 @@ from cxxtract.main import create_app
 from cxxtract.models import (
     CacheInvalidateResponse,
     CallGraphResponse,
+    ClassifyFreshnessResponse,
     CommitDiffSummaryGetResponse,
     CommitDiffSummaryRecord,
     CommitDiffSummarySearchResponse,
     ConfidenceEnvelope,
+    CostEnvelope,
     DefinitionResponse,
+    FetchCallEdgesResponse,
+    FetchReferencesResponse,
+    FetchSymbolsResponse,
     FileSymbolsResponse,
+    GetCompileCommandResponse,
+    GetConfidenceResponse,
+    ListCandidatesResponse,
+    OverlayMode,
+    ParseFileResponse,
+    ReadFileResponse,
     RepoSyncBatchResponse,
     RepoSyncAllResponse,
     RepoSyncJobResponse,
     RepoSyncJobStatus,
     RepoSyncStatusResponse,
     ReferencesResponse,
+    RgSearchResponse,
+    CoverageEnvelope,
 )
 
 
@@ -64,6 +77,35 @@ def mock_engine():
         file_key="repoA:src/test.cpp",
         symbols=[],
         confidence=ConfidenceEnvelope(),
+    ))
+    engine.explore_rg_search = AsyncMock(return_value=RgSearchResponse())
+    engine.explore_read_file = AsyncMock(return_value=ReadFileResponse(file_key="repoA:src/test.cpp"))
+    engine.explore_get_compile_command = AsyncMock(return_value=GetCompileCommandResponse(file_key="repoA:src/test.cpp"))
+    engine.explore_list_candidates = AsyncMock(return_value=ListCandidatesResponse(
+        workspace_id="ws_main",
+        context_id="ws_main:baseline",
+        baseline_context_id="ws_main:baseline",
+        overlay_mode=OverlayMode.SPARSE,
+        symbol="foo",
+    ))
+    engine.explore_classify_freshness = AsyncMock(return_value=ClassifyFreshnessResponse(
+        workspace_id="ws_main",
+        context_id="ws_main:baseline",
+        baseline_context_id="ws_main:baseline",
+        overlay_mode=OverlayMode.SPARSE,
+    ))
+    engine.explore_parse_file = AsyncMock(return_value=ParseFileResponse(
+        workspace_id="ws_main",
+        context_id="ws_main:baseline",
+        baseline_context_id="ws_main:baseline",
+        overlay_mode=OverlayMode.SPARSE,
+    ))
+    engine.explore_fetch_symbols = AsyncMock(return_value=FetchSymbolsResponse(symbol="foo"))
+    engine.explore_fetch_references = AsyncMock(return_value=FetchReferencesResponse(symbol="foo"))
+    engine.explore_fetch_call_edges = AsyncMock(return_value=FetchCallEdgesResponse(symbol="foo", direction="both"))
+    engine.explore_get_confidence = AsyncMock(return_value=GetConfidenceResponse(
+        confidence=ConfidenceEnvelope(),
+        coverage=CoverageEnvelope(),
     ))
     engine.invalidate_cache = AsyncMock(return_value=CacheInvalidateResponse(
         invalidated_files=0,
@@ -210,6 +252,89 @@ class TestQueryContracts:
         )
         assert resp.status_code == 200
         mock_engine.invalidate_cache.assert_awaited_once()
+
+
+class TestExploreContracts:
+
+    async def test_explore_rg_search(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/rg-search",
+            json={"workspace_id": "ws_main", "query": "foo"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_rg_search.assert_awaited_once()
+
+    async def test_explore_read_file(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/read-file",
+            json={"workspace_id": "ws_main", "file_key": "repoA:src/a.cpp"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_read_file.assert_awaited_once()
+
+    async def test_explore_get_compile_command(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/get-compile-command",
+            json={"workspace_id": "ws_main", "file_key": "repoA:src/a.cpp"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_get_compile_command.assert_awaited_once()
+
+    async def test_explore_list_candidates(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/list-candidates",
+            json={"workspace_id": "ws_main", "symbol": "foo"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_list_candidates.assert_awaited_once()
+
+    async def test_explore_classify_freshness(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/classify-freshness",
+            json={"workspace_id": "ws_main", "candidate_file_keys": ["repoA:src/a.cpp"]},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_classify_freshness.assert_awaited_once()
+
+    async def test_explore_parse_file(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/parse-file",
+            json={"workspace_id": "ws_main", "file_keys": ["repoA:src/a.cpp"]},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_parse_file.assert_awaited_once()
+
+    async def test_explore_fetch_symbols(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/fetch-symbols",
+            json={"workspace_id": "ws_main", "symbol": "foo"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_fetch_symbols.assert_awaited_once()
+
+    async def test_explore_fetch_references(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/fetch-references",
+            json={"workspace_id": "ws_main", "symbol": "foo"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_fetch_references.assert_awaited_once()
+
+    async def test_explore_fetch_call_edges(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/fetch-call-edges",
+            json={"workspace_id": "ws_main", "symbol": "foo"},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_fetch_call_edges.assert_awaited_once()
+
+    async def test_explore_get_confidence(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/explore/get-confidence",
+            json={"verified_files": ["repoA:src/a.cpp"]},
+        )
+        assert resp.status_code == 200
+        mock_engine.explore_get_confidence.assert_awaited_once()
 
 
 class TestLegacyFieldsRejected:

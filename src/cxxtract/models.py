@@ -84,6 +84,22 @@ class RepoSyncJobStatus(str, Enum):
     DEAD_LETTER = "dead_letter"
 
 
+class RgSearchMode(str, Enum):
+    """Query mode for lexical recall."""
+
+    SYMBOL = "symbol"
+    REGEX = "regex"
+    LITERAL = "literal"
+
+
+class CompileMatchType(str, Enum):
+    """How compile arguments were resolved for a file."""
+
+    EXACT = "exact"
+    FALLBACK = "fallback"
+    MISSING = "missing"
+
+
 class ExtractedSymbol(BaseModel):
     """A symbol definition extracted from the AST."""
 
@@ -221,6 +237,36 @@ class ConfidenceEnvelope(BaseModel):
     repo_coverage: dict[str, float] = Field(default_factory=dict)
 
 
+class CostEnvelope(BaseModel):
+    """Bounded-cost accounting for an exploration primitive call."""
+
+    requested: dict[str, int] = Field(default_factory=dict)
+    applied: dict[str, int] = Field(default_factory=dict)
+    consumed: dict[str, int] = Field(default_factory=dict)
+    truncated: bool = False
+    truncation_reasons: list[str] = Field(default_factory=list)
+
+
+class EvidenceItem(BaseModel):
+    """Evidence entry emitted by primitive exploration responses."""
+
+    source: str
+    file_key: str = ""
+    line: int = 0
+    col: int = 0
+    snippet: str = ""
+
+
+class CoverageEnvelope(BaseModel):
+    """Coverage metadata for partial-result aware exploration flows."""
+
+    total_candidates: int = 0
+    considered_candidates: int = 0
+    verified_candidates: int = 0
+    partial: bool = False
+    partial_reasons: list[str] = Field(default_factory=list)
+
+
 class SymbolQueryRequest(BaseModel):
     """Request body for /query/references and /query/definition."""
 
@@ -272,6 +318,288 @@ class FileSymbolsRequest(BaseModel):
         if ":" not in self.file_key:
             raise ValueError("file_key must be canonical repo_id:rel/path")
         return self
+
+
+class RgSearchRequest(BaseModel):
+    """Request body for /explore/rg-search."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1)
+    mode: RgSearchMode = RgSearchMode.SYMBOL
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    scope: QueryScope = Field(default_factory=QueryScope)
+    max_hits: int = Field(200, ge=1, le=2000)
+    max_files: int = Field(200, ge=1, le=2000)
+    timeout_s: int = Field(30, ge=1, le=300)
+    context_lines: int = Field(0, ge=0, le=10)
+
+
+class RgSearchHit(BaseModel):
+    """Single rg hit mapped into canonical workspace identity."""
+
+    file_key: str
+    repo_id: str
+    abs_path: str
+    line: int
+    line_text: str = ""
+
+
+class RgSearchResponse(BaseModel):
+    """Response for /explore/rg-search."""
+
+    hits: list[RgSearchHit] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class ReadFileRequest(BaseModel):
+    """Request body for /explore/read-file."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    file_key: str
+    start_line: int = Field(1, ge=1)
+    end_line: int = Field(0, ge=0, description="0 means until EOF")
+    max_bytes: int = Field(65536, ge=1, le=2_000_000)
+
+
+class ReadFileResponse(BaseModel):
+    """Response for /explore/read-file."""
+
+    file_key: str
+    abs_path: str = ""
+    content: str = ""
+    truncated: bool = False
+    line_range: list[int] = Field(default_factory=list)
+    content_hash: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+
+
+class GetCompileCommandRequest(BaseModel):
+    """Request body for /explore/get-compile-command."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    file_key: str
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    repo_overrides: dict[str, RepoOverride] = Field(default_factory=dict)
+
+
+class GetCompileCommandResponse(BaseModel):
+    """Response for /explore/get-compile-command."""
+
+    file_key: str
+    compile_db_path: str = ""
+    match_type: CompileMatchType = CompileMatchType.MISSING
+    cwd: str = ""
+    args: list[str] = Field(default_factory=list)
+    flags_hash: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
+class CandidateProvenance(BaseModel):
+    """Provenance summary for one merged candidate."""
+
+    file_key: str
+    sources: list[str] = Field(default_factory=list)
+
+
+class ListCandidatesRequest(BaseModel):
+    """Request body for /explore/list-candidates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    symbol: str = Field(..., min_length=1)
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    scope: QueryScope = Field(default_factory=QueryScope)
+    repo_overrides: dict[str, RepoOverride] = Field(default_factory=dict)
+    max_files: int = Field(200, ge=1, le=5000)
+    include_rg: bool = True
+
+
+class ListCandidatesResponse(BaseModel):
+    """Response for /explore/list-candidates."""
+
+    workspace_id: str
+    context_id: str
+    baseline_context_id: str
+    overlay_mode: OverlayMode
+    symbol: str
+    candidates: list[str] = Field(default_factory=list)
+    deleted_file_keys: list[str] = Field(default_factory=list)
+    provenance: list[CandidateProvenance] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class FreshnessParseTask(BaseModel):
+    """Parse queue descriptor from classify-freshness."""
+
+    file_key: str
+    repo_id: str
+    compile_match_type: CompileMatchType
+    flags_hash: str = ""
+
+
+class ClassifyFreshnessRequest(BaseModel):
+    """Request body for /explore/classify-freshness."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    repo_overrides: dict[str, RepoOverride] = Field(default_factory=dict)
+    candidate_file_keys: list[str] = Field(default_factory=list)
+    max_files: int = Field(200, ge=1, le=5000)
+
+
+class ClassifyFreshnessResponse(BaseModel):
+    """Response for /explore/classify-freshness."""
+
+    workspace_id: str
+    context_id: str
+    baseline_context_id: str
+    overlay_mode: OverlayMode
+    fresh: list[str] = Field(default_factory=list)
+    stale: list[str] = Field(default_factory=list)
+    unparsed: list[str] = Field(default_factory=list)
+    parse_queue: list[FreshnessParseTask] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class ParseFileRequest(BaseModel):
+    """Request body for /explore/parse-file."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    repo_overrides: dict[str, RepoOverride] = Field(default_factory=dict)
+    file_keys: list[str] = Field(default_factory=list)
+    max_parse_workers: int = Field(1, ge=1, le=128)
+    timeout_s: int = Field(120, ge=1, le=600)
+    skip_if_fresh: bool = True
+
+
+class ParseFileResponse(BaseModel):
+    """Response for /explore/parse-file."""
+
+    workspace_id: str
+    context_id: str
+    baseline_context_id: str
+    overlay_mode: OverlayMode
+    parsed_file_keys: list[str] = Field(default_factory=list)
+    failed_file_keys: list[str] = Field(default_factory=list)
+    skipped_fresh_file_keys: list[str] = Field(default_factory=list)
+    unparsed_file_keys: list[str] = Field(default_factory=list)
+    parse_warnings: list[str] = Field(default_factory=list)
+    persisted_fact_rows: int = 0
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class FetchSymbolsRequest(BaseModel):
+    """Request body for /explore/fetch-symbols."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    symbol: str
+    candidate_file_keys: list[str] = Field(default_factory=list)
+    excluded_file_keys: list[str] = Field(default_factory=list)
+    limit: int = Field(2000, ge=1, le=20000)
+
+
+class FetchSymbolsResponse(BaseModel):
+    """Response for /explore/fetch-symbols."""
+
+    symbol: str
+    symbols: list["SymbolLocation"] = Field(default_factory=list)
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class FetchReferencesRequest(BaseModel):
+    """Request body for /explore/fetch-references."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    symbol: str
+    candidate_file_keys: list[str] = Field(default_factory=list)
+    excluded_file_keys: list[str] = Field(default_factory=list)
+    limit: int = Field(2000, ge=1, le=20000)
+
+
+class FetchReferencesResponse(BaseModel):
+    """Response for /explore/fetch-references."""
+
+    symbol: str
+    references: list["ReferenceLocation"] = Field(default_factory=list)
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class FetchCallEdgesRequest(BaseModel):
+    """Request body for /explore/fetch-call-edges."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., min_length=1)
+    analysis_context: AnalysisContextSpec = Field(default_factory=AnalysisContextSpec)
+    symbol: str
+    direction: CallGraphDirection = CallGraphDirection.BOTH
+    candidate_file_keys: list[str] = Field(default_factory=list)
+    excluded_file_keys: list[str] = Field(default_factory=list)
+    limit: int = Field(2000, ge=1, le=20000)
+
+
+class FetchCallEdgesResponse(BaseModel):
+    """Response for /explore/fetch-call-edges."""
+
+    symbol: str
+    direction: CallGraphDirection
+    edges: list["CallEdgeResponse"] = Field(default_factory=list)
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    cost: CostEnvelope = Field(default_factory=CostEnvelope)
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
+
+
+class GetConfidenceRequest(BaseModel):
+    """Request body for /explore/get-confidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verified_files: list[str] = Field(default_factory=list)
+    stale_files: list[str] = Field(default_factory=list)
+    unparsed_files: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    overlay_mode: OverlayMode = OverlayMode.SPARSE
+
+
+class GetConfidenceResponse(BaseModel):
+    """Response for /explore/get-confidence."""
+
+    confidence: ConfidenceEnvelope
+    coverage: CoverageEnvelope = Field(default_factory=CoverageEnvelope)
 
 
 class CacheInvalidateRequest(BaseModel):

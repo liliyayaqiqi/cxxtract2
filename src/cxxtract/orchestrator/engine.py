@@ -11,6 +11,7 @@ from cxxtract.config import Settings
 from cxxtract.models import (
     CacheInvalidateRequest,
     CacheInvalidateResponse,
+    ClassifyFreshnessRequest,
     CommitDiffSummaryGetResponse,
     CommitDiffSummarySearchRequest,
     CommitDiffSummarySearchResponse,
@@ -18,14 +19,29 @@ from cxxtract.models import (
     CommitDiffSummaryRecord,
     CallGraphRequest,
     CallGraphResponse,
-    ConfidenceEnvelope,
     ContextCreateOverlayRequest,
     ContextCreateOverlayResponse,
     ContextExpireResponse,
     DefinitionResponse,
+    FetchCallEdgesRequest,
+    FetchCallEdgesResponse,
+    FetchReferencesRequest,
+    FetchReferencesResponse,
+    FetchSymbolsRequest,
+    FetchSymbolsResponse,
     FileSymbolsRequest,
     FileSymbolsResponse,
+    GetCompileCommandRequest,
+    GetCompileCommandResponse,
+    GetConfidenceRequest,
+    GetConfidenceResponse,
+    ListCandidatesRequest,
+    ListCandidatesResponse,
     OverlayMode,
+    ParseFileRequest,
+    ParseFileResponse,
+    ReadFileRequest,
+    ReadFileResponse,
     RepoSyncBatchRequest,
     RepoSyncBatchResponse,
     RepoSyncAllRequest,
@@ -35,6 +51,8 @@ from cxxtract.models import (
     RepoSyncRequest,
     RepoSyncStatusResponse,
     ReferencesResponse,
+    RgSearchRequest,
+    RgSearchResponse,
     SymbolQueryRequest,
     WebhookGitLabRequest,
     WebhookGitLabResponse,
@@ -45,9 +63,9 @@ from cxxtract.models import (
 from cxxtract.orchestrator.services.commit_summary_service import CommitSummaryService
 from cxxtract.orchestrator.services.candidate_service import CandidateService
 from cxxtract.orchestrator.services.freshness_service import FreshnessService
+from cxxtract.orchestrator.services.exploration_service import ExplorationService
 from cxxtract.orchestrator.services.query_read_service import QueryReadService
 from cxxtract.orchestrator.services.workspace_context_service import WorkspaceContextService
-from cxxtract.orchestrator.workspace import file_key_to_abs_path
 from cxxtract.orchestrator.writer import SingleWriterService
 
 logger = logging.getLogger(__name__)
@@ -76,6 +94,7 @@ class OrchestratorEngine:
         self._candidate = CandidateService(settings)
         self._freshness = FreshnessService(settings, self._writer)
         self._reader = QueryReadService()
+        self._explore = ExplorationService(settings, self._workspace_context, self._candidate, self._freshness, self._reader)
         self._commit_summaries = CommitSummaryService(settings)
 
     @property
@@ -83,224 +102,266 @@ class OrchestratorEngine:
         """Expose workspace service for background workers."""
         return self._workspace_context
 
-    @staticmethod
-    def _confidence(
-        verified: list[str],
-        stale: list[str],
-        unparsed: list[str],
-        warnings: list[str],
-        overlay_mode: OverlayMode,
-    ) -> ConfidenceEnvelope:
-        total = len(verified) + len(stale) + len(unparsed)
-        verified_ratio = len(verified) / total if total else 0.0
+    async def explore_rg_search(self, request: RgSearchRequest) -> RgSearchResponse:
+        return await self._explore.rg_search(request)
 
-        repo_total: dict[str, int] = {}
-        repo_verified: dict[str, int] = {}
-        for fk in verified + stale + unparsed:
-            repo_id = fk.split(":", 1)[0] if ":" in fk else "unknown"
-            repo_total[repo_id] = repo_total.get(repo_id, 0) + 1
-        for fk in verified:
-            repo_id = fk.split(":", 1)[0] if ":" in fk else "unknown"
-            repo_verified[repo_id] = repo_verified.get(repo_id, 0) + 1
+    async def explore_read_file(self, request: ReadFileRequest) -> ReadFileResponse:
+        return await self._explore.read_file(request)
 
-        return ConfidenceEnvelope(
-            verified_files=verified,
-            stale_files=stale,
-            unparsed_files=unparsed,
-            total_candidates=total,
-            verified_ratio=round(verified_ratio, 4),
-            warnings=sorted(set(warnings)),
-            overlay_mode=overlay_mode,
-            repo_coverage={
-                repo_id: round(repo_verified.get(repo_id, 0) / count, 4)
-                for repo_id, count in repo_total.items()
-                if count > 0
-            },
-        )
+    async def explore_get_compile_command(self, request: GetCompileCommandRequest) -> GetCompileCommandResponse:
+        return await self._explore.get_compile_command(request)
 
-    async def _prepare(self, req: SymbolQueryRequest | CallGraphRequest):
-        ws, manifest = await self._workspace_context.resolve_workspace(req.workspace_id)
-        workspace_root = ws["root_path"]
-        context_id, baseline_id, overlay_mode = await self._workspace_context.resolve_contexts(req)
-        await repo.touch_context(context_id)
+    async def explore_list_candidates(self, request: ListCandidatesRequest) -> ListCandidatesResponse:
+        return await self._explore.list_candidates(request)
 
-        repo_ids = self._workspace_context.candidate_repos(manifest, req.scope.entry_repos, req.scope.max_repo_hops)
-        compile_dbs = self._workspace_context.resolve_compile_dbs(
-            req.workspace_id,
-            workspace_root,
-            manifest,
-            repo_ids,
-            req.repo_overrides,
-        )
-        return workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs
+    async def explore_classify_freshness(self, request: ClassifyFreshnessRequest) -> ClassifyFreshnessResponse:
+        return await self._explore.classify_freshness(request)
+
+    async def explore_parse_file(self, request: ParseFileRequest) -> ParseFileResponse:
+        return await self._explore.parse_file(request)
+
+    async def explore_fetch_symbols(self, request: FetchSymbolsRequest) -> FetchSymbolsResponse:
+        return await self._explore.fetch_symbols(request)
+
+    async def explore_fetch_references(self, request: FetchReferencesRequest) -> FetchReferencesResponse:
+        return await self._explore.fetch_references(request)
+
+    async def explore_fetch_call_edges(self, request: FetchCallEdgesRequest) -> FetchCallEdgesResponse:
+        return await self._explore.fetch_call_edges(request)
+
+    async def explore_get_confidence(self, request: GetConfidenceRequest) -> GetConfidenceResponse:
+        return await self._explore.get_confidence(request)
 
     async def query_references(self, request: SymbolQueryRequest) -> ReferencesResponse:
-        workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs = await self._prepare(request)
-
         max_files = request.max_recall_files or self._settings.max_recall_files
         workers = request.max_parse_workers or self._settings.max_parse_workers
 
-        candidates, deleted, recall_warnings = await self._candidate.resolve_candidates(
-            request.symbol,
-            context_id,
-            baseline_id,
-            repo_ids,
-            workspace_root,
-            manifest,
-            max_files,
+        candidates = await self.explore_list_candidates(
+            ListCandidatesRequest(
+                workspace_id=request.workspace_id,
+                symbol=request.symbol,
+                analysis_context=request.analysis_context,
+                scope=request.scope,
+                repo_overrides=request.repo_overrides,
+                max_files=max_files,
+                include_rg=True,
+            )
         )
-
-        fresh, _stale, unparsed, tasks = await self._freshness.classify(
-            context_id,
-            candidates,
-            compile_dbs,
-            workspace_root,
-            manifest,
+        freshness = await self.explore_classify_freshness(
+            ClassifyFreshnessRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                candidate_file_keys=candidates.candidates,
+                max_files=max_files,
+            )
         )
-        parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, workers)
-
-        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
-        definition = await self._reader.load_definition(
-            request.symbol,
-            context_chain=chain,
-            candidate_file_keys=set(candidates),
-            excluded_file_keys=deleted,
+        parse = await self.explore_parse_file(
+            ParseFileRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                file_keys=freshness.stale,
+                max_parse_workers=workers,
+                timeout_s=self._settings.parse_timeout_s,
+                skip_if_fresh=True,
+            )
         )
-        references = await self._reader.load_references(
-            request.symbol,
-            context_chain=chain,
-            candidate_file_keys=set(candidates),
-            excluded_file_keys=deleted,
+        symbols = await self.explore_fetch_symbols(
+            FetchSymbolsRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                symbol=request.symbol,
+                candidate_file_keys=candidates.candidates,
+                excluded_file_keys=candidates.deleted_file_keys,
+                limit=1,
+            )
+        )
+        refs = await self.explore_fetch_references(
+            FetchReferencesRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                symbol=request.symbol,
+                candidate_file_keys=candidates.candidates,
+                excluded_file_keys=candidates.deleted_file_keys,
+                limit=20000,
+            )
+        )
+        confidence_resp = await self.explore_get_confidence(
+            GetConfidenceRequest(
+                verified_files=sorted(set(freshness.fresh + parse.parsed_file_keys)),
+                stale_files=sorted(set(parse.failed_file_keys)),
+                unparsed_files=sorted(set(freshness.unparsed + parse.unparsed_file_keys)),
+                warnings=sorted(set(candidates.warnings + parse.parse_warnings)),
+                overlay_mode=candidates.overlay_mode,
+            )
         )
 
         return ReferencesResponse(
             symbol=request.symbol,
-            definition=definition,
-            references=references,
-            confidence=self._confidence(fresh + parsed, failed, unparsed, recall_warnings + parse_warnings, overlay_mode),
+            definition=symbols.symbols[0] if symbols.symbols else None,
+            references=refs.references,
+            confidence=confidence_resp.confidence,
         )
 
     async def query_definition(self, request: SymbolQueryRequest) -> DefinitionResponse:
-        workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs = await self._prepare(request)
-
         max_files = request.max_recall_files or self._settings.max_recall_files
         workers = request.max_parse_workers or self._settings.max_parse_workers
 
-        candidates, deleted, recall_warnings = await self._candidate.resolve_candidates(
-            request.symbol,
-            context_id,
-            baseline_id,
-            repo_ids,
-            workspace_root,
-            manifest,
-            max_files,
+        candidates = await self.explore_list_candidates(
+            ListCandidatesRequest(
+                workspace_id=request.workspace_id,
+                symbol=request.symbol,
+                analysis_context=request.analysis_context,
+                scope=request.scope,
+                repo_overrides=request.repo_overrides,
+                max_files=max_files,
+                include_rg=True,
+            )
         )
-
-        fresh, _stale, unparsed, tasks = await self._freshness.classify(
-            context_id,
-            candidates,
-            compile_dbs,
-            workspace_root,
-            manifest,
+        freshness = await self.explore_classify_freshness(
+            ClassifyFreshnessRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                candidate_file_keys=candidates.candidates,
+                max_files=max_files,
+            )
         )
-        parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, workers)
-
-        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
-        definitions = await self._reader.load_definitions(
-            request.symbol,
-            context_chain=chain,
-            candidate_file_keys=set(candidates),
-            excluded_file_keys=deleted,
+        parse = await self.explore_parse_file(
+            ParseFileRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                file_keys=freshness.stale,
+                max_parse_workers=workers,
+                timeout_s=self._settings.parse_timeout_s,
+                skip_if_fresh=True,
+            )
+        )
+        symbols = await self.explore_fetch_symbols(
+            FetchSymbolsRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                symbol=request.symbol,
+                candidate_file_keys=candidates.candidates,
+                excluded_file_keys=candidates.deleted_file_keys,
+                limit=20000,
+            )
+        )
+        confidence_resp = await self.explore_get_confidence(
+            GetConfidenceRequest(
+                verified_files=sorted(set(freshness.fresh + parse.parsed_file_keys)),
+                stale_files=sorted(set(parse.failed_file_keys)),
+                unparsed_files=sorted(set(freshness.unparsed + parse.unparsed_file_keys)),
+                warnings=sorted(set(candidates.warnings + parse.parse_warnings)),
+                overlay_mode=candidates.overlay_mode,
+            )
         )
 
         return DefinitionResponse(
             symbol=request.symbol,
-            definitions=definitions,
-            confidence=self._confidence(fresh + parsed, failed, unparsed, recall_warnings + parse_warnings, overlay_mode),
+            definitions=symbols.symbols,
+            confidence=confidence_resp.confidence,
         )
 
     async def query_call_graph(self, request: CallGraphRequest) -> CallGraphResponse:
-        workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs = await self._prepare(request)
-
         max_files = request.max_recall_files or self._settings.max_recall_files
         workers = request.max_parse_workers or self._settings.max_parse_workers
 
-        candidates, deleted, recall_warnings = await self._candidate.resolve_candidates(
-            request.symbol,
-            context_id,
-            baseline_id,
-            repo_ids,
-            workspace_root,
-            manifest,
-            max_files,
+        candidates = await self.explore_list_candidates(
+            ListCandidatesRequest(
+                workspace_id=request.workspace_id,
+                symbol=request.symbol,
+                analysis_context=request.analysis_context,
+                scope=request.scope,
+                repo_overrides=request.repo_overrides,
+                max_files=max_files,
+                include_rg=True,
+            )
         )
-
-        fresh, _stale, unparsed, tasks = await self._freshness.classify(
-            context_id,
-            candidates,
-            compile_dbs,
-            workspace_root,
-            manifest,
+        freshness = await self.explore_classify_freshness(
+            ClassifyFreshnessRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                candidate_file_keys=candidates.candidates,
+                max_files=max_files,
+            )
         )
-        parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, workers)
-
-        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
-        edges = await self._reader.load_call_edges(
-            request.symbol,
-            request.direction,
-            context_chain=chain,
-            candidate_file_keys=set(candidates),
-            excluded_file_keys=deleted,
+        parse = await self.explore_parse_file(
+            ParseFileRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                file_keys=freshness.stale,
+                max_parse_workers=workers,
+                timeout_s=self._settings.parse_timeout_s,
+                skip_if_fresh=True,
+            )
+        )
+        edges_resp = await self.explore_fetch_call_edges(
+            FetchCallEdgesRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                symbol=request.symbol,
+                direction=request.direction,
+                candidate_file_keys=candidates.candidates,
+                excluded_file_keys=candidates.deleted_file_keys,
+                limit=20000,
+            )
+        )
+        confidence_resp = await self.explore_get_confidence(
+            GetConfidenceRequest(
+                verified_files=sorted(set(freshness.fresh + parse.parsed_file_keys)),
+                stale_files=sorted(set(parse.failed_file_keys)),
+                unparsed_files=sorted(set(freshness.unparsed + parse.unparsed_file_keys)),
+                warnings=sorted(set(candidates.warnings + parse.parse_warnings)),
+                overlay_mode=candidates.overlay_mode,
+            )
         )
 
         return CallGraphResponse(
             symbol=request.symbol,
-            edges=edges,
-            confidence=self._confidence(fresh + parsed, failed, unparsed, recall_warnings + parse_warnings, overlay_mode),
+            edges=edges_resp.edges,
+            confidence=confidence_resp.confidence,
         )
 
     async def query_file_symbols(self, request: FileSymbolsRequest) -> FileSymbolsResponse:
-        ws, manifest = await self._workspace_context.resolve_workspace(request.workspace_id)
-        workspace_root = ws["root_path"]
-        context_id, baseline_id, overlay_mode = await self._workspace_context.resolve_contexts(request)
-
-        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
-        resolved = file_key_to_abs_path(workspace_root, manifest, request.file_key)
-        if resolved is None:
-            confidence = self._confidence([], [], [request.file_key], ["invalid_file_key"], overlay_mode)
-            return FileSymbolsResponse(file_key=request.file_key, symbols=[], confidence=confidence)
-
-        repo_id, _rel_path, abs_path = resolved
-        cfg = manifest.repo_map().get(repo_id)
-        compile_dbs = {repo_id: None}
-        if cfg:
-            compile_dbs = self._workspace_context.resolve_compile_dbs(
-                request.workspace_id,
-                workspace_root,
-                manifest,
-                [repo_id],
-                request.repo_overrides,
+        parse = await self.explore_parse_file(
+            ParseFileRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                repo_overrides=request.repo_overrides,
+                file_keys=[request.file_key],
+                max_parse_workers=1,
+                timeout_s=self._settings.parse_timeout_s,
+                skip_if_fresh=True,
             )
-
-        fresh, _stale, unparsed, tasks = await self._freshness.classify(
-            context_id,
-            [request.file_key],
-            compile_dbs,
-            workspace_root,
-            manifest,
         )
-
-        parse_warnings: list[str] = []
-        parsed: list[str] = []
-        failed: list[str] = []
-        if tasks:
-            parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, 1)
-
-        symbols = await self._reader.load_file_symbols(request.file_key, context_chain=chain)
+        symbols_resp = await self.explore_fetch_symbols(
+            FetchSymbolsRequest(
+                workspace_id=request.workspace_id,
+                analysis_context=request.analysis_context,
+                symbol="",
+                candidate_file_keys=[request.file_key],
+                excluded_file_keys=[],
+                limit=20000,
+            )
+        )
+        confidence_resp = await self.explore_get_confidence(
+            GetConfidenceRequest(
+                verified_files=sorted(set(parse.parsed_file_keys + parse.skipped_fresh_file_keys)),
+                stale_files=sorted(set(parse.failed_file_keys)),
+                unparsed_files=sorted(set(parse.unparsed_file_keys)),
+                warnings=parse.parse_warnings,
+                overlay_mode=parse.overlay_mode,
+            )
+        )
         return FileSymbolsResponse(
             file_key=request.file_key,
-            symbols=symbols,
-            confidence=self._confidence(fresh + parsed, failed, unparsed, parse_warnings, overlay_mode),
+            symbols=symbols_resp.symbols,
+            confidence=confidence_resp.confidence,
         )
 
     async def invalidate_cache(self, request: CacheInvalidateRequest) -> CacheInvalidateResponse:

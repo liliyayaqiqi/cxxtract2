@@ -43,6 +43,67 @@ POST /query/file-symbols
 }
 ```
 
+## Explore List Candidates
+
+```json
+POST /explore/list-candidates
+{
+  "workspace_id": "ws_main",
+  "symbol": "ns::foo",
+  "analysis_context": {"mode": "baseline"},
+  "scope": {"entry_repos": ["repoA"], "max_repo_hops": 2},
+  "max_files": 120,
+  "include_rg": true
+}
+```
+
+## Explore Classify Freshness
+
+```json
+POST /explore/classify-freshness
+{
+  "workspace_id": "ws_main",
+  "candidate_file_keys": ["repoA:src/main.cpp", "repoB:lib/foo.h"]
+}
+```
+
+## Explore Parse File
+
+```json
+POST /explore/parse-file
+{
+  "workspace_id": "ws_main",
+  "file_keys": ["repoA:src/main.cpp"],
+  "max_parse_workers": 2,
+  "timeout_s": 120,
+  "skip_if_fresh": true
+}
+```
+
+## Explore Fetch References
+
+```json
+POST /explore/fetch-references
+{
+  "workspace_id": "ws_main",
+  "symbol": "ns::foo",
+  "candidate_file_keys": ["repoA:src/main.cpp"]
+}
+```
+
+## Explore Read File
+
+```json
+POST /explore/read-file
+{
+  "workspace_id": "ws_main",
+  "file_key": "repoA:src/main.cpp",
+  "start_line": 1,
+  "end_line": 200,
+  "max_bytes": 65536
+}
+```
+
 ## Invalidate Cache
 
 ```json
