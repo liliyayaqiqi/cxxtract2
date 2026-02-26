@@ -30,12 +30,18 @@ compile_commands.json
 # ===== Project outputs =====
 bin/
 *.db
+*.db-shm
+*.db-wal
 *.db-journal
 cxxtract_cache.db
 
 # ===== Config (user-local) =====
 config.yaml
 workspace.yaml
+.env
+.env.local
+.env.*.local
+!.env.example
 
 # ===== IDE / Editor =====
 .vs/

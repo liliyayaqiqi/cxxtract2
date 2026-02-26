@@ -9,7 +9,7 @@ from uuid import uuid4
 from cxxtract.cache import repository as repo
 from cxxtract.config import Settings
 from cxxtract.models import OverlayMode
-from cxxtract.orchestrator.compile_db import CompilationDatabase
+from cxxtract.orchestrator.compile_db import CompilationDatabase, rewrite_compile_commands_to_cache
 from cxxtract.orchestrator.workspace import WorkspaceManifest, load_workspace_manifest
 
 logger = logging.getLogger(__name__)
@@ -100,13 +100,30 @@ class WorkspaceContextService:
             return None
 
         cc_path = str((Path(workspace_root) / compile_commands).resolve())
-        key = f"{workspace_id}|{repo_id}|{cc_path}"
+        try:
+            cc_mtime_ns = Path(cc_path).stat().st_mtime_ns
+        except OSError:
+            cc_mtime_ns = 0
+        key = f"{workspace_id}|{repo_id}|{cc_path}|{cc_mtime_ns}"
         if key not in self._compile_dbs:
             try:
-                self._compile_dbs[key] = CompilationDatabase.load(
+                repo_root_abs = str((Path(workspace_root) / repo_root).resolve())
+                cache_dir = (
+                    Path(workspace_root).resolve()
+                    / ".cxxtract"
+                    / "compdb_cache"
+                    / workspace_id
+                    / repo_id
+                )
+                rewritten_cc_path = rewrite_compile_commands_to_cache(
                     cc_path,
+                    repo_root=repo_root_abs,
+                    cache_dir=cache_dir,
+                )
+                self._compile_dbs[key] = CompilationDatabase.load(
+                    rewritten_cc_path,
                     repo_id=repo_id,
-                    repo_root=str((Path(workspace_root) / repo_root).resolve()),
+                    repo_root=repo_root_abs,
                 )
             except (FileNotFoundError, ValueError) as exc:
                 logger.error("compile_commands load failed for %s: %s", repo_id, exc)

@@ -27,6 +27,7 @@ from cxxtract.models import (
     FileSymbolsRequest,
     ParsePayload,
     RepoSyncBatchRequest,
+    RepoSyncAllRequest,
     RepoSyncRequest,
     SymbolQueryRequest,
     WorkspaceRegisterRequest,
@@ -234,6 +235,7 @@ class TestEngineSyncApis:
                     "    depends_on: []",
                     "    remote_url: https://gitlab.example.com/group/repoA.git",
                     "    token_env_var: CXXTRACT_GITLAB_TOKEN_REPOA",
+                    f"    commit_sha: {'a' * 40}",
                     "path_remaps: []",
                 ]
             )
@@ -267,6 +269,7 @@ class TestEngineSyncApis:
                     "    depends_on: []",
                     "    remote_url: https://gitlab.example.com/group/repoA.git",
                     "    token_env_var: CXXTRACT_GITLAB_TOKEN_REPOA",
+                    f"    commit_sha: {'a' * 40}",
                     "path_remaps: []",
                 ]
             )
@@ -280,3 +283,30 @@ class TestEngineSyncApis:
             ),
         )
         assert len(batch.jobs) == 1
+
+    async def test_sync_all_repos_from_manifest(self, engine: OrchestratorEngine, db_conn, tmp_path: Path):
+        ws, _file_key, _src = await _setup_workspace(engine, tmp_path)
+        manifest = tmp_path / "workspace.yaml"
+        manifest.write_text(
+            "\n".join(
+                [
+                    f"workspace_id: {ws}",
+                    "repos:",
+                    "  - repo_id: repoA",
+                    "    root: repos/repoA",
+                    "    compile_commands: repos/repoA/build/compile_commands.json",
+                    "    default_branch: main",
+                    "    depends_on: []",
+                    "    remote_url: https://gitlab.example.com/group/repoA.git",
+                    "    token_env_var: CXXTRACT_GITLAB_TOKEN_REPOA",
+                    f"    commit_sha: {'b' * 40}",
+                    "path_remaps: []",
+                ]
+            )
+        )
+        await engine.refresh_workspace_manifest(ws)
+
+        result = await engine.sync_all_repos(ws, RepoSyncAllRequest(force_clean=True))
+        assert len(result.jobs) == 1
+        assert result.jobs[0].repo_id == "repoA"
+        assert result.jobs[0].requested_commit_sha == "b" * 40

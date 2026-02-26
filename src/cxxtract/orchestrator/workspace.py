@@ -22,6 +22,7 @@ class RepoManifest(BaseModel):
     remote_url: str = ""
     token_env_var: str = ""
     project_path: str = ""
+    commit_sha: str = ""
 
     @model_validator(mode="after")
     def _validate_sync_fields(self) -> "RepoManifest":
@@ -30,6 +31,12 @@ class RepoManifest(BaseModel):
                 raise ValueError(f"repo {self.repo_id}: remote_url must be HTTPS")
             if not self.token_env_var:
                 raise ValueError(f"repo {self.repo_id}: token_env_var is required when remote_url is set")
+            if not self.commit_sha:
+                raise ValueError(f"repo {self.repo_id}: commit_sha is required when remote_url is set")
+            sha = self.commit_sha.strip()
+            if len(sha) != 40 or any(c not in "0123456789abcdefABCDEF" for c in sha):
+                raise ValueError(f"repo {self.repo_id}: commit_sha must be a 40-character hex SHA")
+            self.commit_sha = sha.lower()
         return self
 
 

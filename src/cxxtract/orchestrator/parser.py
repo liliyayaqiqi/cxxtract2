@@ -7,7 +7,7 @@ import json
 import logging
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 from cxxtract.cache.hasher import compute_composite_hash, compute_content_hash, compute_includes_hash
@@ -27,6 +27,39 @@ class ParseTask:
     repo_id: str
     rel_path: str
     abs_path: str
+
+
+def _repo_root_for_task(task: ParseTask) -> Path:
+    rel_parts = PurePosixPath(task.rel_path).parts
+    p = Path(task.abs_path).resolve()
+    for _ in rel_parts:
+        p = p.parent
+    return p
+
+
+def _fallback_args_for_task(task: ParseTask) -> list[str]:
+    repo_root = _repo_root_for_task(task)
+    suffix = Path(task.abs_path).suffix.lower()
+    language = "-xc" if suffix == ".c" else "-xc++"
+    return [language, "-std=c++17", f"-I{str(repo_root).replace('\\', '/')}"]
+
+
+def _output_has_facts(output: ExtractorOutput) -> bool:
+    return bool(output.symbols or output.references or output.call_edges or output.include_deps)
+
+
+def _same_file_path(lhs: str, rhs: str) -> bool:
+    return Path(lhs).resolve() == Path(rhs).resolve()
+
+
+def _diagnostics_snippet(output: Optional[ExtractorOutput], stderr_text: str, stdout_text: str) -> str:
+    if output and output.diagnostics:
+        return " | ".join(output.diagnostics[:3])
+    if stderr_text.strip():
+        return stderr_text.strip()[:500]
+    if stdout_text.strip():
+        return stdout_text.strip()[:500]
+    return "<no diagnostics>"
 
 
 def _build_vfs_overlay_file(workspace_root: str, manifest: WorkspaceManifest) -> str:
@@ -91,51 +124,82 @@ async def parse_file(
 
     proc: Optional[asyncio.subprocess.Process] = None
     overlay_file = ""
+    pre_warnings: list[str] = []
     try:
-        cmd = [
-            extractor_binary,
-            "--action",
-            "extract-all",
-            "--file",
-            task.abs_path,
-        ]
-
         overlay_file = _build_vfs_overlay_file(workspace_root, manifest)
-        args = list(entry.arguments)
-        if overlay_file:
-            args = ["-ivfsoverlay", overlay_file, *args]
-        cmd.extend(["--", *args])
 
-        logger.debug("Spawning extractor: %s", " ".join(cmd))
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=entry.directory or None,
-        )
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-
-        if proc.returncode != 0:
-            stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
-            logger.warning(
-                "cpp-extractor failed for %s (exit %d): %s",
+        async def _run_once(run_args: list[str], run_cwd: Optional[str]) -> tuple[int, str, str]:
+            cmd = [
+                extractor_binary,
+                "--action",
+                "extract-all",
+                "--file",
                 task.abs_path,
-                proc.returncode,
-                stderr_text[:500],
+                "--",
+                *run_args,
+            ]
+            logger.debug("Spawning extractor: %s", " ".join(cmd))
+            subprocess_cwd = run_cwd if run_cwd and Path(run_cwd).exists() else None
+            local_proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=subprocess_cwd,
             )
-            return None
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(local_proc.communicate(), timeout=timeout_s)
+            return (
+                local_proc.returncode,
+                stdout_bytes.decode("utf-8", errors="replace"),
+                stderr_bytes.decode("utf-8", errors="replace"),
+            )
 
-        stdout_text = stdout_bytes.decode("utf-8", errors="replace")
-        output = _parse_extractor_json(stdout_text, task.abs_path)
+        primary_args = list(entry.arguments)
+        if overlay_file:
+            primary_args = ["-ivfsoverlay", overlay_file, *primary_args]
+
+        output: Optional[ExtractorOutput] = None
+        should_try_primary = _same_file_path(entry.file, task.abs_path)
+        if should_try_primary:
+            rc, stdout_text, stderr_text = await _run_once(primary_args, entry.directory)
+            output = _parse_extractor_json(stdout_text, task.abs_path) if stdout_text.strip() else None
+
+            if rc != 0 or output is None or (not output.success and not _output_has_facts(output)):
+                logger.warning(
+                    "cpp-extractor primary parse failed for %s (exit %d): %s",
+                    task.abs_path,
+                    rc,
+                    _diagnostics_snippet(output, stderr_text, stdout_text),
+                )
+                output = None
+        else:
+            pre_warnings.append("compile_entry_mismatch")
+
         if output is None:
-            return None
+            fallback_args = _fallback_args_for_task(task)
+            if overlay_file:
+                fallback_args = ["-ivfsoverlay", overlay_file, *fallback_args]
+            fallback_cwd = str(_repo_root_for_task(task))
+
+            rc2, stdout2, stderr2 = await _run_once(fallback_args, fallback_cwd)
+            output2 = _parse_extractor_json(stdout2, task.abs_path) if stdout2.strip() else None
+            if output2 is None or (rc2 != 0 and not _output_has_facts(output2)):
+                logger.warning(
+                    "cpp-extractor fallback parse failed for %s (exit %d): %s",
+                    task.abs_path,
+                    rc2,
+                    _diagnostics_snippet(output2, stderr2, stdout2),
+                )
+                return None
+
+            output = output2
+            pre_warnings.append("fallback_parse_used")
 
         content_hash = compute_content_hash(task.abs_path)
         flags_hash = entry.flags_hash
 
         resolved_deps: list[ResolvedIncludeDep] = []
         include_hashes: list[str] = []
-        warnings: list[str] = []
+        warnings: list[str] = list(pre_warnings)
 
         for dep in output.include_deps:
             resolved = resolve_include_dep(workspace_root, manifest, dep.path, dep.depth)
@@ -172,8 +236,8 @@ async def parse_file(
             except ProcessLookupError:
                 pass
         return None
-    except FileNotFoundError:
-        logger.error("cpp-extractor binary not found: %s", extractor_binary)
+    except FileNotFoundError as exc:
+        logger.error("cpp-extractor execution failed for %s: %s", task.abs_path, exc)
         return None
     except Exception:
         logger.exception("Unexpected parser failure for %s", task.abs_path)

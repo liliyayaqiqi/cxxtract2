@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -57,7 +57,11 @@ def _make_valid_output_json(file: str) -> str:
 
 def _mock_process(stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0) -> MagicMock:
     proc = MagicMock()
-    proc.communicate = AsyncMock(return_value=(stdout, stderr))
+
+    async def _communicate():
+        return stdout, stderr
+
+    proc.communicate = _communicate
     proc.returncode = returncode
     proc.kill = MagicMock()
     return proc
@@ -91,7 +95,10 @@ class TestParseFile:
         entry = _make_entry(str(src), str(tmp_path))
         proc = _mock_process(stdout=_make_valid_output_json(str(src)).encode(), returncode=0)
 
-        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
+        async def _spawn(*_args, **_kwargs):
+            return proc
+
+        with patch("asyncio.create_subprocess_exec", _spawn):
             payload = await parse_file(
                 task,
                 entry,
@@ -111,7 +118,10 @@ class TestParseFile:
         entry = _make_entry(str(src), str(tmp_path))
 
         proc = _mock_process(stderr=b"error", returncode=1)
-        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
+        async def _spawn(*_args, **_kwargs):
+            return proc
+
+        with patch("asyncio.create_subprocess_exec", _spawn):
             payload = await parse_file(
                 task,
                 entry,
@@ -129,20 +139,72 @@ class TestParseFile:
         entry = _make_entry(str(src), str(tmp_path))
 
         proc = _mock_process()
-        proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
+        async def _timeout():
+            raise asyncio.TimeoutError
 
-        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
-            with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
-                payload = await parse_file(
-                    task,
-                    entry,
-                    extractor_binary="fake-extractor",
-                    workspace_root=str(tmp_path),
-                    manifest=_make_manifest(),
-                    timeout_s=1,
-                )
+        proc.communicate = _timeout
+
+        async def _spawn(*_args, **_kwargs):
+            return proc
+
+        with patch("asyncio.create_subprocess_exec", _spawn):
+            payload = await parse_file(
+                task,
+                entry,
+                extractor_binary="fake-extractor",
+                workspace_root=str(tmp_path),
+                manifest=_make_manifest(),
+                timeout_s=1,
+            )
 
         assert payload is None
+
+    async def test_fallback_parse_used_after_primary_failure(self, tmp_path: Path):
+        src = tmp_path / "main.h"
+        src.write_text("typedef int foo_t;")
+
+        task = ParseTask(
+            context_id="ws_test:baseline",
+            file_key="repoA:src/main.h",
+            repo_id="repoA",
+            rel_path="src/main.h",
+            abs_path=str(src),
+        )
+        entry = _make_entry(str(src), str(tmp_path), ["/c", str(src)])
+
+        primary = _mock_process(
+            stdout=json.dumps(
+                {
+                    "file": str(src),
+                    "symbols": [],
+                    "references": [],
+                    "call_edges": [],
+                    "include_deps": [],
+                    "success": False,
+                    "diagnostics": ["Failed to parse translation unit (error code: 4)"],
+                }
+            ).encode(),
+            returncode=1,
+        )
+        fallback = _mock_process(stdout=_make_valid_output_json(str(src)).encode(), returncode=0)
+
+        calls = [primary, fallback]
+
+        async def _spawn(*_args, **_kwargs):
+            return calls.pop(0)
+
+        with patch("asyncio.create_subprocess_exec", _spawn):
+            payload = await parse_file(
+                task,
+                entry,
+                extractor_binary="fake-extractor",
+                workspace_root=str(tmp_path),
+                manifest=_make_manifest(),
+            )
+
+        assert payload is not None
+        assert payload.output.symbols
+        assert "fallback_parse_used" in payload.warnings
 
 
 class TestParseFilesConcurrent:
@@ -168,7 +230,10 @@ class TestParseFilesConcurrent:
             file_path = args[4]
             return _mock_process(stdout=_make_valid_output_json(file_path).encode(), returncode=0)
 
-        with patch("asyncio.create_subprocess_exec", AsyncMock(side_effect=make_proc)):
+        async def _spawn(*args, **kwargs):
+            return make_proc(*args, **kwargs)
+
+        with patch("asyncio.create_subprocess_exec", _spawn):
             results = await parse_files_concurrent(
                 tasks,
                 extractor_binary="fake-extractor",

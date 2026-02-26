@@ -78,6 +78,15 @@ POST /workspace/ws_main/sync-batch
 }
 ```
 
+## Sync All Repos Declared In Manifest
+
+```json
+POST /workspace/ws_main/sync-all-repos
+{
+  "force_clean": true
+}
+```
+
 ## Upsert Commit Diff Summary Embedding
 
 ```json

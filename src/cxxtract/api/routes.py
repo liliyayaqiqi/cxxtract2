@@ -30,6 +30,8 @@ from cxxtract.models import (
     HealthResponse,
     RepoSyncBatchRequest,
     RepoSyncBatchResponse,
+    RepoSyncAllRequest,
+    RepoSyncAllResponse,
     RepoSyncJobResponse,
     RepoSyncRequest,
     RepoSyncStatusResponse,
@@ -137,6 +139,18 @@ async def sync_batch(
 ) -> RepoSyncBatchResponse:
     try:
         return await engine.sync_batch(workspace_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/workspace/{workspace_id}/sync-all-repos", response_model=RepoSyncAllResponse, tags=["sync"])
+async def sync_all_repos(
+    workspace_id: str,
+    body: RepoSyncAllRequest,
+    engine: EngineDepends,
+) -> RepoSyncAllResponse:
+    try:
+        return await engine.sync_all_repos(workspace_id, body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

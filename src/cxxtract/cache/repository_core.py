@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -23,6 +24,29 @@ def _utc_now() -> str:
 async def _fetch_all_dict(cursor: aiosqlite.Cursor) -> list[dict[str, Any]]:
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]  # type: ignore[arg-type]
+
+
+def _build_fts_query(query: str) -> str:
+    """Build a safe FTS5 MATCH query from symbol text.
+
+    C++ names like ``webrtc::IceTransportInterface`` contain ':' which FTS5
+    interprets as a column selector unless quoted; this helper always emits a
+    quoted/text-token expression.
+    """
+    raw = (query or "").strip()
+    if not raw:
+        return '""'
+
+    # Exact phrase (escaped for FTS5 double-quote rules).
+    phrase = f"\"{raw.replace('\"', '\"\"')}\""
+
+    # Tokenized fallback improves matches when source has spaces around '::'.
+    tokens = [t for t in re.split(r"[^A-Za-z0-9_]+", raw) if t]
+    if len(tokens) <= 1:
+        return phrase
+
+    token_terms = [f"\"{t.replace('\"', '\"\"')}\"" for t in tokens]
+    return f"{phrase} OR ({' AND '.join(token_terms)})"
 
 
 async def upsert_workspace(
@@ -336,8 +360,9 @@ async def search_recall_candidates(
     conn: Optional[aiosqlite.Connection] = None,
 ) -> list[str]:
     db = conn or get_connection()
+    fts_query = _build_fts_query(query)
     sql = "SELECT DISTINCT file_key FROM recall_fts WHERE context_id = ? AND recall_fts MATCH ?"
-    params: list[Any] = [context_id, query]
+    params: list[Any] = [context_id, fts_query]
     if repo_ids:
         placeholders = ",".join(["?"] * len(repo_ids))
         sql += f" AND repo_id IN ({placeholders})"
@@ -349,7 +374,7 @@ async def search_recall_candidates(
         rows = await cur.fetchall()
         return [r[0] for r in rows]  # type: ignore[index]
     except Exception:
-        logger.exception("FTS search failed for context=%s query=%s", context_id, query)
+        logger.exception("FTS search failed for context=%s query=%s fts_query=%s", context_id, query, fts_query)
         return []
 
 

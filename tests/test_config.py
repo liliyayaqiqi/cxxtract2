@@ -26,7 +26,7 @@ class TestSettingsDefaults:
     def test_defaults(self):
         s = Settings()
         assert s.rg_binary == "rg"
-        assert s.extractor_binary == "./cpp-extractor/build/Release/cpp-extractor.exe"
+        assert s.extractor_binary == "./bin/cpp-extractor.exe"
         assert s.default_compile_commands == ""
         assert s.db_path == "./cxxtract_cache.db"
         assert s.max_parse_workers == 4
@@ -144,3 +144,33 @@ class TestEnvVarOverrides:
         with patch.dict(os.environ, {"CXXTRACT_PORT": "7777"}):
             s = Settings(port=9999)
             assert s.port == 9999
+
+
+class TestDotenvLoading:
+
+    def test_load_settings_reads_dotenv_for_prefixed_values(self, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dotenv = tmp_path / ".env"
+        dotenv.write_text("CXXTRACT_PORT=8765\n")
+        monkeypatch.delenv("CXXTRACT_PORT", raising=False)
+
+        s = load_settings(None)
+        assert s.port == 8765
+
+    def test_load_settings_injects_token_env_for_runtime_lookup(self, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dotenv = tmp_path / ".env"
+        dotenv.write_text("CXXTRACT_GITLAB_TOKEN_REPOA=secret_value\n")
+        monkeypatch.delenv("CXXTRACT_GITLAB_TOKEN_REPOA", raising=False)
+
+        _ = load_settings(None)
+        assert os.environ.get("CXXTRACT_GITLAB_TOKEN_REPOA") == "secret_value"
+
+    def test_existing_env_wins_over_dotenv(self, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dotenv = tmp_path / ".env"
+        dotenv.write_text("CXXTRACT_PORT=7001\n")
+        monkeypatch.setenv("CXXTRACT_PORT", "9001")
+
+        s = load_settings(None)
+        assert s.port == 9001

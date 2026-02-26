@@ -49,11 +49,13 @@ class FreshnessService:
 
             repo_id, rel_path, abs_path = resolved
             cdb = compile_dbs.get(repo_id)
-            if cdb is None or not cdb.has(abs_path):
+            if cdb is None:
                 unparsed.append(file_key)
                 continue
 
             entry = cdb.get(abs_path)
+            if entry is None:
+                entry = cdb.fallback_entry(abs_path)
             if entry is None:
                 unparsed.append(file_key)
                 continue

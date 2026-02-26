@@ -20,6 +20,7 @@ from cxxtract.models import (
     DefinitionResponse,
     FileSymbolsResponse,
     RepoSyncBatchResponse,
+    RepoSyncAllResponse,
     RepoSyncJobResponse,
     RepoSyncJobStatus,
     RepoSyncStatusResponse,
@@ -87,6 +88,20 @@ def mock_engine():
                 status=RepoSyncJobStatus.PENDING,
             )
         ]
+    ))
+    engine.sync_all_repos = AsyncMock(return_value=RepoSyncAllResponse(
+        workspace_id="ws_main",
+        jobs=[
+            RepoSyncJobResponse(
+                job_id="job-all-1",
+                workspace_id="ws_main",
+                repo_id="repoA",
+                requested_commit_sha="a" * 40,
+                requested_branch="main",
+                status=RepoSyncJobStatus.PENDING,
+            )
+        ],
+        skipped_repos=["repoC"],
     ))
     engine.get_sync_job = AsyncMock(return_value=RepoSyncJobResponse(
         job_id="job-1",
@@ -242,6 +257,14 @@ class TestSyncAndVectorEndpoints:
         )
         assert resp.status_code == 200
         mock_engine.sync_batch.assert_awaited_once()
+
+    async def test_sync_all_repos_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/workspace/ws_main/sync-all-repos",
+            json={"force_clean": True},
+        )
+        assert resp.status_code == 200
+        mock_engine.sync_all_repos.assert_awaited_once()
 
     async def test_sync_repo_rejects_short_sha(self, client: AsyncClient):
         resp = await client.post(

@@ -335,6 +335,12 @@ class RepoSyncBatchRequest(BaseModel):
     targets: list[RepoSyncRequest] = Field(..., min_length=1)
 
 
+class RepoSyncAllRequest(BaseModel):
+    """Sync all sync-enabled repos declared in workspace manifest."""
+
+    force_clean: bool = True
+
+
 class RepoSyncJobResponse(BaseModel):
     """Response describing sync job status."""
 
@@ -360,6 +366,14 @@ class RepoSyncBatchResponse(BaseModel):
     """Batch enqueue result."""
 
     jobs: list[RepoSyncJobResponse] = Field(default_factory=list)
+
+
+class RepoSyncAllResponse(BaseModel):
+    """Manifest-driven sync-all response."""
+
+    workspace_id: str
+    jobs: list[RepoSyncJobResponse] = Field(default_factory=list)
+    skipped_repos: list[str] = Field(default_factory=list)
 
 
 class RepoSyncStatusResponse(BaseModel):

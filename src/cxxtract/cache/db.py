@@ -142,7 +142,13 @@ async def _load_sqlite_vec_extension(conn: aiosqlite.Connection, extension_path:
         return False
     await conn.enable_load_extension(True)
     try:
-        await conn.execute("SELECT load_extension(?)", (extension_path,))
+        try:
+            # sqlite-vec exports sqlite3_vec_init; explicit entrypoint is required
+            # when DLL filename does not match SQLite's default symbol derivation.
+            await conn.execute("SELECT load_extension(?, ?)", (extension_path, "sqlite3_vec_init"))
+        except Exception:
+            # Fallback to default loader path in case future builds expose default symbol.
+            await conn.execute("SELECT load_extension(?)", (extension_path,))
         logger.info("sqlite-vec extension loaded from %s", extension_path)
         return True
     finally:

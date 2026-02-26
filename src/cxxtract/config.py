@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
 
     # -- External tool paths --------------------------------------------------
     rg_binary: str = "rg"
-    extractor_binary: str = "./cpp-extractor/build/Release/cpp-extractor.exe"
+    extractor_binary: str = "./bin/cpp-extractor.exe"
     git_binary: str = "git"
     default_compile_commands: str = ""
     workspace_manifest_name: str = "workspace.yaml"
@@ -61,6 +62,51 @@ class Settings(BaseSettings):
     }
 
 
+def _load_dotenv_values(path: Path) -> dict[str, str]:
+    """Parse .env style KEY=VALUE lines into a dictionary."""
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key] = value
+
+    return values
+
+
+def _inject_dotenv_into_environ(config_path: Optional[str | Path]) -> None:
+    """Load .env values into process env (without overriding existing vars)."""
+    candidates: list[Path] = []
+    if config_path is not None:
+        candidates.append(Path(config_path).resolve().parent / ".env")
+    candidates.append(Path(".env").resolve())
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = str(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if not candidate.exists():
+            continue
+        for key, value in _load_dotenv_values(candidate).items():
+            os.environ.setdefault(key, value)
+
+
 def load_settings(config_path: Optional[str | Path] = None) -> Settings:
     """Load settings, optionally merging values from a YAML file.
 
@@ -75,6 +121,8 @@ def load_settings(config_path: Optional[str | Path] = None) -> Settings:
     Settings
         A fully-resolved settings instance.
     """
+    _inject_dotenv_into_environ(config_path)
+
     overrides: dict = {}
     if config_path is not None:
         p = Path(config_path)

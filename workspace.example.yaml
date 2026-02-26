@@ -8,6 +8,7 @@ repos:
     remote_url: "https://gitlab.example.com/group/repoA.git"
     token_env_var: "CXXTRACT_GITLAB_TOKEN_REPOA"
     project_path: "group/repoA"
+    commit_sha: "0123456789abcdef0123456789abcdef01234567"
   - repo_id: "repoB"
     root: "repos/repoB"
     compile_commands: "repos/repoB/build/compile_commands.json"
@@ -16,6 +17,7 @@ repos:
     remote_url: "https://gitlab.example.com/group/repoB.git"
     token_env_var: "CXXTRACT_GITLAB_TOKEN_REPOB"
     project_path: "group/repoB"
+    commit_sha: "89abcdef0123456789abcdef0123456789abcdef"
 path_remaps:
   - from_prefix: "C:/vcpkg/installed/x64-windows/include"
     to_repo_id: "repoB"

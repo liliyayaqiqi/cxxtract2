@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from unittest.mock import patch
 
 import aiosqlite
 import pytest
@@ -57,12 +58,13 @@ class TestInitDb:
         db_mod._connection = saved
 
     async def test_init_db_fails_when_vector_enabled_without_extension(self):
-        with pytest.raises(RuntimeError):
-            await init_db(
-                ":memory:",
-                enable_vector_features=True,
-                commit_embedding_dim=1536,
-            )
+        with patch("cxxtract.cache.db.default_sqlite_vec_path", return_value=Path("Z:/__missing__/sqlite_vec.dll")):
+            with pytest.raises(RuntimeError):
+                await init_db(
+                    ":memory:",
+                    enable_vector_features=True,
+                    commit_embedding_dim=1536,
+                )
 
 
 class TestHashers:
@@ -163,6 +165,24 @@ class TestRepositoryCore:
         assert defs[0]["qualified_name"] == "ns::foo"
         assert len(refs) == 1
         assert len(edges) == 1
+
+    async def test_fts_query_handles_cpp_qualified_symbol(self, db_conn: aiosqlite.Connection, tmp_path: Path):
+        context_id = await _bootstrap_workspace(tmp_path)
+        file_key = "webrtc:pc/ice_transport.h"
+        await repo.upsert_recall_content(
+            context_id=context_id,
+            file_key=file_key,
+            repo_id="webrtc",
+            content="class IceTransportInterface {}; namespace webrtc {}",
+        )
+
+        hits = await repo.search_recall_candidates(
+            context_id,
+            "webrtc::IceTransportInterface",
+            repo_ids=["webrtc"],
+            max_files=20,
+        )
+        assert file_key in hits
 
     async def test_overlay_first_context_chain(self, db_conn: aiosqlite.Connection, tmp_path: Path):
         baseline = await _bootstrap_workspace(tmp_path)

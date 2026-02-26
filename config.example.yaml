@@ -5,7 +5,7 @@
 rg_binary: "rg.exe"
 
 # Path to the cpp-extractor binary
-extractor_binary: "./cpp-extractor/build/Release/cpp-extractor.exe"
+extractor_binary: "./bin/cpp-extractor.exe"
 
 # Path to git binary used for repo sync
 git_binary: "git.exe"

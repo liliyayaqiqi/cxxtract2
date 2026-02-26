@@ -28,6 +28,8 @@ from cxxtract.models import (
     OverlayMode,
     RepoSyncBatchRequest,
     RepoSyncBatchResponse,
+    RepoSyncAllRequest,
+    RepoSyncAllResponse,
     RepoSyncJobResponse,
     RepoSyncJobStatus,
     RepoSyncRequest,
@@ -437,6 +439,23 @@ class OrchestratorEngine:
         for target in request.targets:
             jobs.append(await self.sync_repo(workspace_id, target))
         return RepoSyncBatchResponse(jobs=jobs)
+
+    async def sync_all_repos(self, workspace_id: str, request: RepoSyncAllRequest) -> RepoSyncAllResponse:
+        _ws, manifest = await self._workspace_context.resolve_workspace(workspace_id)
+        jobs: list[RepoSyncJobResponse] = []
+        skipped: list[str] = []
+        for repo_cfg in manifest.repos:
+            if not repo_cfg.remote_url:
+                skipped.append(repo_cfg.repo_id)
+                continue
+            sync_req = RepoSyncRequest(
+                repo_id=repo_cfg.repo_id,
+                commit_sha=repo_cfg.commit_sha,
+                branch=repo_cfg.default_branch,
+                force_clean=request.force_clean,
+            )
+            jobs.append(await self.sync_repo(workspace_id, sync_req))
+        return RepoSyncAllResponse(workspace_id=workspace_id, jobs=jobs, skipped_repos=skipped)
 
     async def get_sync_job(self, job_id: str) -> RepoSyncJobResponse:
         row = await repo.get_repo_sync_job(job_id)

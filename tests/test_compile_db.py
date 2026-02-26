@@ -22,6 +22,7 @@ from cxxtract.orchestrator.compile_db import (
     _extract_flags,
     _normalise,
     _split_command,
+    rewrite_compile_commands_to_cache,
 )
 
 
@@ -239,6 +240,49 @@ class TestQuery:
 
 
 # ====================================================================
+# Fallback selection
+# ====================================================================
+
+class TestFallbackEntry:
+
+    def test_fallback_exact_match(self, tmp_path: Path):
+        src = tmp_path / "src" / "engine.cpp"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// engine")
+        db = CompilationDatabase({_normalise(str(src)): CompileEntry(str(src), str(tmp_path), ["-O2"])})
+
+        entry = db.fallback_entry(src)
+        assert entry is not None
+        assert entry.file == str(src)
+
+    def test_fallback_prefers_same_stem_source_for_header(self, tmp_path: Path):
+        src = tmp_path / "src" / "webrtc_connection.cc"
+        alt = tmp_path / "src" / "other.cc"
+        header = tmp_path / "src" / "webrtc_connection.h"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// impl")
+        alt.write_text("// other")
+        header.write_text("// decl")
+
+        db = CompilationDatabase(
+            {
+                _normalise(str(src)): CompileEntry(str(src), str(tmp_path), ["-Iinclude", "-DTEST=1"]),
+                _normalise(str(alt)): CompileEntry(str(alt), str(tmp_path), ["-Iinclude"]),
+            }
+        )
+
+        entry = db.fallback_entry(header)
+        assert entry is not None
+        assert Path(entry.file).name == "webrtc_connection.cc"
+
+    def test_fallback_none_when_empty_db(self, tmp_path: Path):
+        db = CompilationDatabase({})
+        header = tmp_path / "a.h"
+        header.write_text("// h")
+        assert db.fallback_entry(header) is None
+
+
+# ====================================================================
 # _extract_flags helper
 # ====================================================================
 
@@ -320,3 +364,76 @@ class TestNormalise:
     def test_resolves_to_absolute(self):
         result = _normalise("relative/path/test.cpp")
         assert Path(result).is_absolute()
+
+
+class TestRewriteCompileCommands:
+
+    def test_rewrite_legacy_absolute_paths_to_repo_root(self, tmp_path: Path):
+        repo_root = tmp_path / "repos" / "repoA"
+        src = repo_root / "src" / "main.cpp"
+        inc = repo_root / "include"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        inc.mkdir(parents=True, exist_ok=True)
+        src.write_text("int main() { return 0; }")
+
+        legacy_root = tmp_path / "legacy_checkout" / "repoA"
+        compile_db = tmp_path / "compile_commands.json"
+        compile_db.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(legacy_root / "out" / "debug"),
+                        "file": str(legacy_root / "src" / "main.cpp"),
+                        "command": (
+                            f'clang++ -I"{legacy_root / "include"}" '
+                            f'"{legacy_root / "src" / "main.cpp"}"'
+                        ),
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        original_text = compile_db.read_text(encoding="utf-8")
+
+        rewritten = rewrite_compile_commands_to_cache(
+            compile_db,
+            repo_root=repo_root,
+            cache_dir=tmp_path / "cache",
+        )
+        assert Path(rewritten).exists()
+        assert compile_db.read_text(encoding="utf-8") == original_text
+
+        db = CompilationDatabase.load(rewritten, repo_id="repoA", repo_root=str(repo_root))
+        assert db.has(src)
+        entry = db.get(src)
+        assert entry is not None
+        assert any(str(inc).replace("\\", "/") in flag.replace("\\", "/") for flag in entry.arguments)
+
+    def test_rewrite_handles_relative_file_paths(self, tmp_path: Path):
+        repo_root = tmp_path / "repos" / "repoA"
+        src = repo_root / "src" / "a.cpp"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// a")
+
+        legacy_root = tmp_path / "legacy" / "repoA"
+        compile_db = tmp_path / "compile_commands.json"
+        compile_db.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(legacy_root / "out" / "debug"),
+                        "file": "../../src/a.cpp",
+                        "arguments": ["clang++", "-c", "../../src/a.cpp"],
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        rewritten = rewrite_compile_commands_to_cache(
+            compile_db,
+            repo_root=repo_root,
+            cache_dir=tmp_path / "cache",
+        )
+        db = CompilationDatabase.load(rewritten, repo_id="repoA", repo_root=str(repo_root))
+        assert db.has(src)

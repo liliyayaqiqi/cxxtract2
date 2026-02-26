@@ -4,9 +4,11 @@
 
 ### Added (v4 sync + vector retrieval)
 - Added manifest-driven GitLab sync fields per repo: `remote_url`, `token_env_var`, `project_path`.
+- Added required per-repo `commit_sha` in manifest for deterministic built-in sync-all behavior.
 - Added sync APIs:
   - `POST /workspace/{workspace_id}/sync-repo`
   - `POST /workspace/{workspace_id}/sync-batch`
+  - `POST /workspace/{workspace_id}/sync-all-repos`
   - `GET /sync-jobs/{job_id}`
   - `GET /workspace/{workspace_id}/repos/{repo_id}/sync-status`
 - Added background repo sync worker with deterministic detached checkout at exact `commit_sha`.
