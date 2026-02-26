@@ -21,21 +21,31 @@ logger = logging.getLogger(__name__)
 class CompileEntry:
     """Represents a single entry from compile_commands.json."""
 
-    __slots__ = ("file", "directory", "arguments", "flags_hash")
+    __slots__ = ("file", "directory", "arguments", "flags_hash", "repo_id", "file_key", "rel_path")
 
     def __init__(
         self,
         file: str,
         directory: str,
         arguments: list[str],
+        *,
+        repo_id: str = "",
+        file_key: str = "",
+        rel_path: str = "",
     ) -> None:
         self.file = file
         self.directory = directory
         self.arguments = arguments
         self.flags_hash = compute_flags_hash(arguments)
+        self.repo_id = repo_id
+        self.file_key = file_key
+        self.rel_path = rel_path
 
     def __repr__(self) -> str:
-        return f"CompileEntry(file={self.file!r}, nflags={len(self.arguments)})"
+        return (
+            f"CompileEntry(file={self.file!r}, repo_id={self.repo_id!r}, "
+            f"nflags={len(self.arguments)})"
+        )
 
 
 class CompilationDatabase:
@@ -53,7 +63,13 @@ class CompilationDatabase:
     # ------------------------------------------------------------------
 
     @classmethod
-    def load(cls, path: str | Path) -> "CompilationDatabase":
+    def load(
+        cls,
+        path: str | Path,
+        *,
+        repo_id: str = "",
+        repo_root: Optional[str] = None,
+    ) -> "CompilationDatabase":
         """Parse *path* and return a ready-to-query database.
 
         Parameters
@@ -100,10 +116,23 @@ class CompilationDatabase:
             # Strip the compiler executable (first arg) and the source file itself
             flags = _extract_flags(arguments, file_path)
 
+            rel_path = ""
+            if repo_root:
+                try:
+                    rel_path = str(Path(file_path).resolve().relative_to(Path(repo_root).resolve()))
+                except ValueError:
+                    rel_path = ""
+
+            rel_posix = rel_path.replace("\\", "/")
+            file_key = f"{repo_id}:{rel_posix}" if repo_id and rel_posix else ""
+
             entries[_normalise(file_path)] = CompileEntry(
                 file=file_path,
                 directory=directory,
                 arguments=flags,
+                repo_id=repo_id,
+                file_key=file_key,
+                rel_path=rel_posix,
             )
 
         logger.info("Loaded compilation database with %d entries from %s", len(entries), p)

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     rg_binary: str = "rg"
     extractor_binary: str = "./cpp-extractor/build/Release/cpp-extractor.exe"
     default_compile_commands: str = ""
+    workspace_manifest_name: str = "workspace.yaml"
 
     # -- Cache ----------------------------------------------------------------
     db_path: str = "./cxxtract_cache.db"
@@ -29,10 +30,20 @@ class Settings(BaseSettings):
     max_recall_files: int = 200
     recall_timeout_s: int = 30
     parse_timeout_s: int = 120
+    writer_queue_size: int = 1024
+    writer_batch_size: int = 10
+    writer_retry_attempts: int = 3
+    writer_retry_delay_ms: int = 200
 
     # -- Server ---------------------------------------------------------------
     host: str = "127.0.0.1"
     port: int = 8000
+
+    # -- Overlay controls -----------------------------------------------------
+    max_overlay_files: int = 5000
+    max_overlay_rows: int = 2_000_000
+    context_ttl_hours: int = 72
+    context_disk_budget_bytes: int = 4 * 1024 * 1024 * 1024
 
     model_config = {
         "env_prefix": "CXXTRACT_",

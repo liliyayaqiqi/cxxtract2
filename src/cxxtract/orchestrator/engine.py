@@ -1,471 +1,388 @@
-"""Core orchestration engine — the five-stage semantic query pipeline.
-
-Stage 1: Cache Check — lookup existing facts in SQLite.
-Stage 2: Recall — blast ripgrep across the codebase to find candidate files.
-Stage 3: Hash Diff — compare candidate file hashes to detect stale cache entries.
-Stage 4: Parse — spawn cpp-extractor workers for cache-miss files.
-Stage 5: Merge — combine cached + fresh facts and build confidence envelope.
-"""
+"""Workspace-aware orchestration engine with baseline/overlay semantics (v3-only)."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from uuid import uuid4
 
 from cxxtract.cache import repository as repo
-from cxxtract.cache.hasher import (
-    compute_composite_hash,
-    compute_content_hash,
-    compute_flags_hash,
-    compute_includes_hash,
-)
 from cxxtract.config import Settings
 from cxxtract.models import (
-    CallEdgeResponse,
-    CallGraphRequest,
-    CallGraphResponse,
     CacheInvalidateRequest,
     CacheInvalidateResponse,
+    CallGraphRequest,
+    CallGraphResponse,
     ConfidenceEnvelope,
+    ContextCreateOverlayRequest,
+    ContextCreateOverlayResponse,
+    ContextExpireResponse,
     DefinitionResponse,
     FileSymbolsRequest,
     FileSymbolsResponse,
-    ReferenceLocation,
+    OverlayMode,
     ReferencesResponse,
-    SymbolLocation,
     SymbolQueryRequest,
+    WebhookGitLabRequest,
+    WebhookGitLabResponse,
+    WorkspaceInfoResponse,
+    WorkspaceRefreshResponse,
+    WorkspaceRegisterRequest,
 )
-from cxxtract.orchestrator.compile_db import CompilationDatabase
-from cxxtract.orchestrator.parser import parse_files_concurrent
-from cxxtract.orchestrator.recall import run_recall
+from cxxtract.orchestrator.services.candidate_service import CandidateService
+from cxxtract.orchestrator.services.freshness_service import FreshnessService
+from cxxtract.orchestrator.services.query_read_service import QueryReadService
+from cxxtract.orchestrator.services.workspace_context_service import WorkspaceContextService
+from cxxtract.orchestrator.workspace import file_key_to_abs_path
+from cxxtract.orchestrator.writer import SingleWriterService
 
 logger = logging.getLogger(__name__)
 
 
+class _InlineWriter:
+    """Fallback writer for tests."""
+
+    queue_depth = 0
+    lag_ms = 0.0
+
+    async def enqueue(self, payload) -> None:
+        await repo.upsert_parse_payload(payload)
+
+    async def flush(self) -> None:
+        return
+
+
 class OrchestratorEngine:
-    """Executes the five-stage semantic query pipeline."""
+    """Multi-repo query engine."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, writer: SingleWriterService | None = None) -> None:
         self._settings = settings
-        self._compile_dbs: dict[str, CompilationDatabase] = {}
+        self._writer = writer or _InlineWriter()
+        self._workspace_context = WorkspaceContextService(settings)
+        self._candidate = CandidateService(settings)
+        self._freshness = FreshnessService(settings, self._writer)
+        self._reader = QueryReadService()
 
-    # ------------------------------------------------------------------
-    # CompileDB management
-    # ------------------------------------------------------------------
-
-    def get_compile_db(self, compile_commands_path: Optional[str]) -> Optional[CompilationDatabase]:
-        """Load (and cache in-memory) a CompilationDatabase.
-
-        Falls back to ``settings.default_compile_commands`` when no
-        explicit path is given.
-        """
-        path = compile_commands_path or self._settings.default_compile_commands
-        if not path:
-            return None
-
-        resolved = str(Path(path).resolve())
-        if resolved not in self._compile_dbs:
-            try:
-                self._compile_dbs[resolved] = CompilationDatabase.load(resolved)
-            except (FileNotFoundError, ValueError) as exc:
-                logger.error("Failed to load compile_commands.json: %s", exc)
-                return None
-        return self._compile_dbs[resolved]
-
-    def invalidate_compile_db(self, path: Optional[str] = None) -> None:
-        """Drop the cached CompilationDatabase so it's reloaded on next use."""
-        if path:
-            resolved = str(Path(path).resolve())
-            self._compile_dbs.pop(resolved, None)
-        else:
-            self._compile_dbs.clear()
-
-    # ------------------------------------------------------------------
-    # Pipeline helpers
-    # ------------------------------------------------------------------
-
-    async def _recall_candidates(
-        self,
-        symbol: str,
-        repo_root: str,
-        max_files: int,
-    ) -> tuple[list[str], list[str]]:
-        """Stage 2: Run ripgrep recall and return unique file paths.
-
-        Returns
-        -------
-        tuple of (file_paths, warnings)
-            file_paths: list of candidate file paths.
-            warnings: list of diagnostic strings from recall (may be empty).
-        """
-        result = await run_recall(
-            symbol,
-            repo_root,
-            rg_binary=self._settings.rg_binary,
-            max_files=max_files,
-            timeout_s=self._settings.recall_timeout_s,
-        )
-
-        warnings: list[str] = []
-        if result.error:
-            warnings.append(f"recall: {result.error}")
-        if result.elapsed_ms > 5000:
-            warnings.append(f"recall: slow query ({result.elapsed_ms:.0f}ms)")
-
-        return [h.file_path for h in result.hits], warnings
-
-    async def _classify_files(
-        self,
-        candidate_files: list[str],
-        compile_db: Optional[CompilationDatabase],
-    ) -> tuple[list[str], list[str], list[str]]:
-        """Stage 3: Classify candidate files into verified / stale / unparsed.
-
-        Returns
-        -------
-        tuple of (fresh_files, stale_files, unparsed_files)
-            fresh_files: cached and composite hash still matches
-            stale_files: cached but hash is outdated → need re-parse
-            unparsed_files: no compile flags → cannot parse
-        """
-        fresh: list[str] = []
-        stale: list[str] = []
-        unparsed: list[str] = []
-
-        for fp in candidate_files:
-            # Check if we have compile flags
-            if compile_db is None or not compile_db.has(fp):
-                unparsed.append(fp)
-                continue
-
-            entry = compile_db.get(fp)
-            assert entry is not None
-
-            # Check cache
-            cached_hash = await repo.get_composite_hash(fp)
-            if cached_hash is None:
-                stale.append(fp)
-                continue
-
-            # Recompute hash
-            content_hash = compute_content_hash(fp)
-            if not content_hash:
-                stale.append(fp)
-                continue
-
-            # For includes, we use a simplified check: if the file content
-            # hash + flags hash match, we consider it fresh.  Full transitive
-            # include checking is done post-parse and stored.
-            tracked = await repo.get_tracked_file(fp)
-            if tracked:
-                current_composite = compute_composite_hash(
-                    content_hash, tracked["includes_hash"], entry.flags_hash
-                )
-            else:
-                current_composite = compute_composite_hash(content_hash, "", entry.flags_hash)
-
-            if current_composite == cached_hash:
-                fresh.append(fp)
-            else:
-                stale.append(fp)
-
-        return fresh, stale, unparsed
-
-    async def _parse_stale_files(
-        self,
-        stale_files: list[str],
-        compile_db: CompilationDatabase,
-        max_workers: int,
-    ) -> list[str]:
-        """Stage 4: Parse stale files via cpp-extractor. Return successfully parsed file paths."""
-        files_and_entries = []
-        for fp in stale_files:
-            entry = compile_db.get(fp)
-            if entry:
-                files_and_entries.append((fp, entry))
-
-        if not files_and_entries:
-            return []
-
-        results = await parse_files_concurrent(
-            files_and_entries,
-            extractor_binary=self._settings.extractor_binary,
-            max_workers=max_workers,
-            timeout_s=self._settings.parse_timeout_s,
-        )
-
-        return [fp for fp, output in results.items() if output is not None]
-
-    def _build_confidence(
-        self,
-        fresh_files: list[str],
-        newly_parsed: list[str],
-        stale_files: list[str],
-        unparsed_files: list[str],
-        failed_files: list[str],
-        warnings: Optional[list[str]] = None,
+    @staticmethod
+    def _confidence(
+        verified: list[str],
+        stale: list[str],
+        unparsed: list[str],
+        warnings: list[str],
+        overlay_mode: OverlayMode,
     ) -> ConfidenceEnvelope:
-        """Stage 5a: Build the confidence envelope."""
-        verified = fresh_files + newly_parsed
-        total = len(verified) + len(stale_files) + len(unparsed_files) + len(failed_files)
-        ratio = len(verified) / total if total > 0 else 0.0
+        total = len(verified) + len(stale) + len(unparsed)
+        verified_ratio = len(verified) / total if total else 0.0
+
+        repo_total: dict[str, int] = {}
+        repo_verified: dict[str, int] = {}
+        for fk in verified + stale + unparsed:
+            repo_id = fk.split(":", 1)[0] if ":" in fk else "unknown"
+            repo_total[repo_id] = repo_total.get(repo_id, 0) + 1
+        for fk in verified:
+            repo_id = fk.split(":", 1)[0] if ":" in fk else "unknown"
+            repo_verified[repo_id] = repo_verified.get(repo_id, 0) + 1
+
         return ConfidenceEnvelope(
             verified_files=verified,
-            stale_files=stale_files + failed_files,
-            unparsed_files=unparsed_files,
+            stale_files=stale,
+            unparsed_files=unparsed,
             total_candidates=total,
-            verified_ratio=round(ratio, 4),
-            warnings=warnings or [],
+            verified_ratio=round(verified_ratio, 4),
+            warnings=sorted(set(warnings)),
+            overlay_mode=overlay_mode,
+            repo_coverage={
+                repo_id: round(repo_verified.get(repo_id, 0) / count, 4)
+                for repo_id, count in repo_total.items()
+                if count > 0
+            },
         )
 
-    # ------------------------------------------------------------------
-    # Public query entry points
-    # ------------------------------------------------------------------
+    async def _prepare(self, req: SymbolQueryRequest | CallGraphRequest):
+        ws, manifest = await self._workspace_context.resolve_workspace(req.workspace_id)
+        workspace_root = ws["root_path"]
+        context_id, baseline_id, overlay_mode = await self._workspace_context.resolve_contexts(req)
+        await repo.touch_context(context_id)
+
+        repo_ids = self._workspace_context.candidate_repos(manifest, req.scope.entry_repos, req.scope.max_repo_hops)
+        compile_dbs = self._workspace_context.resolve_compile_dbs(
+            req.workspace_id,
+            workspace_root,
+            manifest,
+            repo_ids,
+            req.repo_overrides,
+        )
+        return workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs
 
     async def query_references(self, request: SymbolQueryRequest) -> ReferencesResponse:
-        """Find all references to a symbol."""
-        max_files = request.max_recall_files or self._settings.max_recall_files
-        max_workers = request.max_parse_workers or self._settings.max_parse_workers
-        compile_db = self.get_compile_db(request.compile_commands)
+        workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs = await self._prepare(request)
 
-        # Stage 2: Recall
-        candidate_files, recall_warnings = await self._recall_candidates(
-            request.symbol, request.repo_root, max_files
+        max_files = request.max_recall_files or self._settings.max_recall_files
+        workers = request.max_parse_workers or self._settings.max_parse_workers
+
+        candidates, deleted, recall_warnings = await self._candidate.resolve_candidates(
+            request.symbol,
+            context_id,
+            baseline_id,
+            repo_ids,
+            workspace_root,
+            manifest,
+            max_files,
         )
 
-        # Stage 3: Hash diff
-        fresh, stale, unparsed = await self._classify_files(candidate_files, compile_db)
+        fresh, _stale, unparsed, tasks = await self._freshness.classify(
+            context_id,
+            candidates,
+            compile_dbs,
+            workspace_root,
+            manifest,
+        )
+        parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, workers)
 
-        # Stage 4: Parse stale files
-        newly_parsed: list[str] = []
-        failed: list[str] = []
-        if stale and compile_db:
-            newly_parsed = await self._parse_stale_files(stale, compile_db, max_workers)
-            failed = [f for f in stale if f not in newly_parsed]
-
-        # Stage 5: Merge results from cache
-        # Look up definitions
-        definitions = await repo.search_symbols_by_name(request.symbol)
-        definition = None
-        if definitions:
-            d = definitions[0]
-            definition = SymbolLocation(
-                file=d["file_path"],
-                line=d["line"],
-                col=d["col"],
-                kind=d["kind"],
-                qualified_name=d["qualified_name"],
-                extent_end_line=d.get("extent_end_line", 0),
-            )
-
-        # Look up references
-        ref_rows = await repo.search_references_by_symbol(request.symbol)
-        references = [
-            ReferenceLocation(
-                file=r["file_path"],
-                line=r["line"],
-                col=r["col"],
-                kind=r["ref_kind"],
-            )
-            for r in ref_rows
-        ]
-
-        confidence = self._build_confidence(
-            fresh, newly_parsed, [], unparsed, failed, warnings=recall_warnings,
+        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
+        definition = await self._reader.load_definition(
+            request.symbol,
+            context_chain=chain,
+            candidate_file_keys=set(candidates),
+            excluded_file_keys=deleted,
+        )
+        references = await self._reader.load_references(
+            request.symbol,
+            context_chain=chain,
+            candidate_file_keys=set(candidates),
+            excluded_file_keys=deleted,
         )
 
         return ReferencesResponse(
             symbol=request.symbol,
             definition=definition,
             references=references,
-            confidence=confidence,
+            confidence=self._confidence(fresh + parsed, failed, unparsed, recall_warnings + parse_warnings, overlay_mode),
         )
 
     async def query_definition(self, request: SymbolQueryRequest) -> DefinitionResponse:
-        """Find the definition(s) of a symbol."""
-        max_files = request.max_recall_files or self._settings.max_recall_files
-        max_workers = request.max_parse_workers or self._settings.max_parse_workers
-        compile_db = self.get_compile_db(request.compile_commands)
+        workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs = await self._prepare(request)
 
-        # Stage 2: Recall
-        candidate_files, recall_warnings = await self._recall_candidates(
-            request.symbol, request.repo_root, max_files
+        max_files = request.max_recall_files or self._settings.max_recall_files
+        workers = request.max_parse_workers or self._settings.max_parse_workers
+
+        candidates, deleted, recall_warnings = await self._candidate.resolve_candidates(
+            request.symbol,
+            context_id,
+            baseline_id,
+            repo_ids,
+            workspace_root,
+            manifest,
+            max_files,
         )
 
-        # Stage 3: Hash diff
-        fresh, stale, unparsed = await self._classify_files(candidate_files, compile_db)
+        fresh, _stale, unparsed, tasks = await self._freshness.classify(
+            context_id,
+            candidates,
+            compile_dbs,
+            workspace_root,
+            manifest,
+        )
+        parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, workers)
 
-        # Stage 4: Parse stale
-        newly_parsed: list[str] = []
-        failed: list[str] = []
-        if stale and compile_db:
-            newly_parsed = await self._parse_stale_files(stale, compile_db, max_workers)
-            failed = [f for f in stale if f not in newly_parsed]
-
-        # Stage 5: Merge
-        definitions = await repo.search_symbols_by_name(request.symbol)
-        locations = [
-            SymbolLocation(
-                file=d["file_path"],
-                line=d["line"],
-                col=d["col"],
-                kind=d["kind"],
-                qualified_name=d["qualified_name"],
-                extent_end_line=d.get("extent_end_line", 0),
-            )
-            for d in definitions
-        ]
-
-        confidence = self._build_confidence(
-            fresh, newly_parsed, [], unparsed, failed, warnings=recall_warnings,
+        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
+        definitions = await self._reader.load_definitions(
+            request.symbol,
+            context_chain=chain,
+            candidate_file_keys=set(candidates),
+            excluded_file_keys=deleted,
         )
 
         return DefinitionResponse(
             symbol=request.symbol,
-            definitions=locations,
-            confidence=confidence,
+            definitions=definitions,
+            confidence=self._confidence(fresh + parsed, failed, unparsed, recall_warnings + parse_warnings, overlay_mode),
         )
 
     async def query_call_graph(self, request: CallGraphRequest) -> CallGraphResponse:
-        """Get call graph edges for a function."""
-        max_files = request.max_recall_files or self._settings.max_recall_files
-        max_workers = request.max_parse_workers or self._settings.max_parse_workers
-        compile_db = self.get_compile_db(request.compile_commands)
+        workspace_root, manifest, context_id, baseline_id, overlay_mode, repo_ids, compile_dbs = await self._prepare(request)
 
-        # Stage 2: Recall
-        candidate_files, recall_warnings = await self._recall_candidates(
-            request.symbol, request.repo_root, max_files
+        max_files = request.max_recall_files or self._settings.max_recall_files
+        workers = request.max_parse_workers or self._settings.max_parse_workers
+
+        candidates, deleted, recall_warnings = await self._candidate.resolve_candidates(
+            request.symbol,
+            context_id,
+            baseline_id,
+            repo_ids,
+            workspace_root,
+            manifest,
+            max_files,
         )
 
-        # Stage 3: Hash diff
-        fresh, stale, unparsed = await self._classify_files(candidate_files, compile_db)
+        fresh, _stale, unparsed, tasks = await self._freshness.classify(
+            context_id,
+            candidates,
+            compile_dbs,
+            workspace_root,
+            manifest,
+        )
+        parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, workers)
 
-        # Stage 4: Parse stale
-        newly_parsed: list[str] = []
-        failed: list[str] = []
-        if stale and compile_db:
-            newly_parsed = await self._parse_stale_files(stale, compile_db, max_workers)
-            failed = [f for f in stale if f not in newly_parsed]
-
-        # Stage 5: Merge call edges
-        edges: list[CallEdgeResponse] = []
-
-        if request.direction in ("outgoing", "both"):
-            outgoing = await repo.get_call_edges_for_caller(request.symbol)
-            edges.extend(
-                CallEdgeResponse(
-                    caller=e["caller_qualified_name"],
-                    callee=e["callee_qualified_name"],
-                    file=e["file_path"],
-                    line=e["line"],
-                )
-                for e in outgoing
-            )
-
-        if request.direction in ("incoming", "both"):
-            incoming = await repo.get_call_edges_for_callee(request.symbol)
-            edges.extend(
-                CallEdgeResponse(
-                    caller=e["caller_qualified_name"],
-                    callee=e["callee_qualified_name"],
-                    file=e["file_path"],
-                    line=e["line"],
-                )
-                for e in incoming
-            )
-
-        confidence = self._build_confidence(
-            fresh, newly_parsed, [], unparsed, failed, warnings=recall_warnings,
+        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
+        edges = await self._reader.load_call_edges(
+            request.symbol,
+            request.direction,
+            context_chain=chain,
+            candidate_file_keys=set(candidates),
+            excluded_file_keys=deleted,
         )
 
         return CallGraphResponse(
             symbol=request.symbol,
             edges=edges,
-            confidence=confidence,
+            confidence=self._confidence(fresh + parsed, failed, unparsed, recall_warnings + parse_warnings, overlay_mode),
         )
 
     async def query_file_symbols(self, request: FileSymbolsRequest) -> FileSymbolsResponse:
-        """List all symbols defined in a given file."""
-        compile_db = self.get_compile_db(request.compile_commands)
-        file_path = str(Path(request.file_path).resolve())
+        ws, manifest = await self._workspace_context.resolve_workspace(request.workspace_id)
+        workspace_root = ws["root_path"]
+        context_id, baseline_id, overlay_mode = await self._workspace_context.resolve_contexts(request)
 
-        # Check if parsing is needed
-        cached_hash = await repo.get_composite_hash(file_path)
-        needs_parse = cached_hash is None
+        chain = [context_id] if context_id == baseline_id else [context_id, baseline_id]
+        resolved = file_key_to_abs_path(workspace_root, manifest, request.file_key)
+        if resolved is None:
+            confidence = self._confidence([], [], [request.file_key], ["invalid_file_key"], overlay_mode)
+            return FileSymbolsResponse(file_key=request.file_key, symbols=[], confidence=confidence)
 
-        if not needs_parse:
-            # Verify freshness
-            content_hash = compute_content_hash(file_path)
-            tracked = await repo.get_tracked_file(file_path)
-            if tracked and compile_db:
-                entry = compile_db.get(file_path)
-                if entry:
-                    current = compute_composite_hash(
-                        content_hash, tracked["includes_hash"], entry.flags_hash
-                    )
-                    needs_parse = current != cached_hash
-
-        unparsed: list[str] = []
-        verified: list[str] = []
-        stale: list[str] = []
-
-        if needs_parse and compile_db:
-            entry = compile_db.get(file_path)
-            if entry:
-                parsed = await self._parse_stale_files([file_path], compile_db, 1)
-                if parsed:
-                    verified = [file_path]
-                else:
-                    stale = [file_path]
-            else:
-                unparsed = [file_path]
-        elif needs_parse:
-            unparsed = [file_path]
-        else:
-            verified = [file_path]
-
-        symbols_rows = await repo.get_symbols_by_file(file_path)
-        symbols = [
-            SymbolLocation(
-                file=s["file_path"],
-                line=s["line"],
-                col=s["col"],
-                kind=s["kind"],
-                qualified_name=s["qualified_name"],
-                extent_end_line=s.get("extent_end_line", 0),
+        repo_id, _rel_path, abs_path = resolved
+        cfg = manifest.repo_map().get(repo_id)
+        compile_dbs = {repo_id: None}
+        if cfg:
+            compile_dbs = self._workspace_context.resolve_compile_dbs(
+                request.workspace_id,
+                workspace_root,
+                manifest,
+                [repo_id],
+                request.repo_overrides,
             )
-            for s in symbols_rows
-        ]
 
-        confidence = self._build_confidence(verified, [], stale, unparsed, [])
+        fresh, _stale, unparsed, tasks = await self._freshness.classify(
+            context_id,
+            [request.file_key],
+            compile_dbs,
+            workspace_root,
+            manifest,
+        )
 
+        parse_warnings: list[str] = []
+        parsed: list[str] = []
+        failed: list[str] = []
+        if tasks:
+            parsed, failed, parse_warnings = await self._freshness.parse(tasks, workspace_root, manifest, 1)
+
+        symbols = await self._reader.load_file_symbols(request.file_key, context_chain=chain)
         return FileSymbolsResponse(
-            file=file_path,
+            file_key=request.file_key,
             symbols=symbols,
-            confidence=confidence,
+            confidence=self._confidence(fresh + parsed, failed, unparsed, parse_warnings, overlay_mode),
         )
 
     async def invalidate_cache(self, request: CacheInvalidateRequest) -> CacheInvalidateResponse:
-        """Invalidate cached facts for specific files or the entire cache."""
-        if request.file_paths is None:
-            count = await repo.clear_all()
-            self._compile_dbs.clear()
+        await self._workspace_context.resolve_workspace(request.workspace_id)
+        context_id = request.context_id or f"{request.workspace_id}:baseline"
+
+        if request.file_keys is None:
+            count = await repo.clear_context(context_id)
             return CacheInvalidateResponse(
                 invalidated_files=count,
-                message=f"Invalidated entire cache ({count} files)",
+                message=f"Invalidated context cache {context_id} ({count} files)",
             )
 
         count = 0
-        for fp in request.file_paths:
-            resolved = str(Path(fp).resolve())
-            tracked = await repo.get_tracked_file(resolved)
+        for file_key in request.file_keys:
+            tracked = await repo.get_tracked_file(context_id, file_key)
             if tracked:
-                await repo.delete_tracked_file(resolved)
+                await repo.delete_tracked_file(context_id, file_key)
                 count += 1
 
         return CacheInvalidateResponse(
             invalidated_files=count,
-            message=f"Invalidated {count} of {len(request.file_paths)} requested files",
+            message=f"Invalidated {count} of {len(request.file_keys)} requested file keys",
+        )
+
+    async def register_workspace(self, request: WorkspaceRegisterRequest) -> WorkspaceInfoResponse:
+        manifest_path = request.manifest_path or str((Path(request.root_path) / self._settings.workspace_manifest_name).resolve())
+        await repo.upsert_workspace(request.workspace_id, request.root_path, manifest_path)
+
+        ws, manifest = await self._workspace_context.resolve_workspace(request.workspace_id, reload_manifest=True)
+        baseline = await repo.ensure_baseline_context(request.workspace_id)
+        return WorkspaceInfoResponse(
+            workspace_id=request.workspace_id,
+            root_path=ws["root_path"],
+            manifest_path=ws["manifest_path"],
+            repos=[r.repo_id for r in manifest.repos],
+            contexts=[baseline],
+        )
+
+    async def get_workspace_info(self, workspace_id: str) -> WorkspaceInfoResponse:
+        ws, manifest = await self._workspace_context.resolve_workspace(workspace_id)
+        contexts = [c["context_id"] for c in await repo.list_active_contexts(workspace_id)]
+        return WorkspaceInfoResponse(
+            workspace_id=workspace_id,
+            root_path=ws["root_path"],
+            manifest_path=ws["manifest_path"],
+            repos=[r.repo_id for r in manifest.repos],
+            contexts=contexts,
+        )
+
+    async def refresh_workspace_manifest(self, workspace_id: str) -> WorkspaceRefreshResponse:
+        _, manifest = await self._workspace_context.resolve_workspace(workspace_id, reload_manifest=True)
+        return WorkspaceRefreshResponse(
+            workspace_id=workspace_id,
+            repos_synced=len(manifest.repos),
+            message=f"Synced {len(manifest.repos)} repos from workspace manifest",
+        )
+
+    async def create_pr_overlay_context(self, request: ContextCreateOverlayRequest) -> ContextCreateOverlayResponse:
+        baseline = await repo.ensure_baseline_context(request.workspace_id)
+        context_id = request.context_id or f"{request.workspace_id}:pr:{request.pr_id or uuid4().hex[:8]}"
+
+        await repo.upsert_analysis_context(
+            context_id,
+            request.workspace_id,
+            "pr",
+            base_context_id=baseline,
+            overlay_mode=OverlayMode.SPARSE.value,
+        )
+        ctx = await repo.get_analysis_context(context_id)
+        assert ctx is not None
+
+        return ContextCreateOverlayResponse(
+            context_id=context_id,
+            workspace_id=request.workspace_id,
+            base_context_id=baseline,
+            overlay_mode=OverlayMode(ctx["overlay_mode"]),
+            overlay_file_count=ctx["overlay_file_count"],
+            overlay_row_count=ctx["overlay_row_count"],
+            partial_overlay=ctx["overlay_mode"] == OverlayMode.PARTIAL_OVERLAY.value,
+        )
+
+    async def expire_context(self, context_id: str) -> ContextExpireResponse:
+        expired = await repo.expire_context(context_id)
+        return ContextExpireResponse(
+            context_id=context_id,
+            expired=expired,
+            message="expired" if expired else "context not found",
+        )
+
+    async def ingest_gitlab_webhook(self, request: WebhookGitLabRequest) -> WebhookGitLabResponse:
+        job_id = uuid4().hex
+        await repo.insert_index_job(
+            job_id=job_id,
+            workspace_id=request.payload.get("workspace_id", ""),
+            repo_id=request.payload.get("repo_id", ""),
+            context_id=request.payload.get("context_id", ""),
+            event_type=request.event_type,
+            event_sha=request.payload.get("event_sha", ""),
+        )
+        return WebhookGitLabResponse(
+            accepted=True,
+            index_job_id=job_id,
+            message="Webhook accepted and index job created",
         )

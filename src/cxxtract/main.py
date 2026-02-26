@@ -17,6 +17,7 @@ from cxxtract.cache.db import close_db, init_db
 from cxxtract.config import Settings, load_settings
 from cxxtract.orchestrator.engine import OrchestratorEngine
 from cxxtract.orchestrator.rg_env import ensure_rg
+from cxxtract.orchestrator.writer import SingleWriterService
 
 logger = logging.getLogger("cxxtract")
 
@@ -50,8 +51,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialise database
     await init_db(settings.db_path)
 
-    # Create orchestrator
-    engine = OrchestratorEngine(settings)
+    # Create single writer and orchestrator
+    writer = SingleWriterService(settings)
+    await writer.start()
+    app.state.writer = writer
+    engine = OrchestratorEngine(settings, writer)
     app.state.engine = engine
 
     logger.info("Ready — listening on %s:%d", settings.host, settings.port)
@@ -59,6 +63,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down…")
+    writer: SingleWriterService = app.state.writer
+    await writer.stop()
     await close_db()
 
 

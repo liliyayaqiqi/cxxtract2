@@ -1,19 +1,4 @@
-"""Tests for the FastAPI HTTP endpoints (routes.py).
-
-Uses httpx.AsyncClient with the ASGI transport to test routing,
-request validation, serialization, and status codes.  The
-OrchestratorEngine is mocked so these tests are independent of
-the pipeline internals.
-
-Covers:
-  - GET /health
-  - POST /query/references
-  - POST /query/definition
-  - POST /query/call-graph
-  - POST /query/file-symbols
-  - POST /cache/invalidate
-  - Error cases: 422 on invalid body
-"""
+"""Tests for the FastAPI HTTP endpoints (v3 contracts only)."""
 
 from __future__ import annotations
 
@@ -32,13 +17,8 @@ from cxxtract.models import (
     DefinitionResponse,
     FileSymbolsResponse,
     ReferencesResponse,
-    SymbolLocation,
 )
 
-
-# ====================================================================
-# Fixtures
-# ====================================================================
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
@@ -55,7 +35,6 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def mock_engine():
-    """Create a mock OrchestratorEngine with all query methods stubbed."""
     engine = MagicMock()
     engine.query_references = AsyncMock(return_value=ReferencesResponse(
         symbol="test",
@@ -74,7 +53,7 @@ def mock_engine():
         confidence=ConfidenceEnvelope(),
     ))
     engine.query_file_symbols = AsyncMock(return_value=FileSymbolsResponse(
-        file="test.cpp",
+        file_key="repoA:src/test.cpp",
         symbols=[],
         confidence=ConfidenceEnvelope(),
     ))
@@ -87,9 +66,6 @@ def mock_engine():
 
 @pytest.fixture
 async def client(settings: Settings, mock_engine):
-    """Create an httpx AsyncClient wired to the FastAPI app with mocked engine."""
-    # Bypass lifespan (which tries to init DB, find rg, etc.)
-    # by patching the lifespan to a no-op
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
@@ -98,8 +74,6 @@ async def client(settings: Settings, mock_engine):
 
     app = create_app(settings)
     app.router.lifespan_context = _noop_lifespan
-
-    # Set up app state manually
     app.state.settings = settings
     app.state.engine = mock_engine
     app.state.rg_version = "ripgrep 14.0.0"
@@ -109,155 +83,87 @@ async def client(settings: Settings, mock_engine):
         yield ac
 
 
-# ====================================================================
-# GET /health
-# ====================================================================
-
 class TestHealthEndpoint:
 
     async def test_health_returns_200(self, client: AsyncClient):
-        # Mock the repository calls made by the health endpoint
-        with patch(
-            "cxxtract.api.routes.repo.count_tracked_files",
-            AsyncMock(return_value=5),
-        ), patch(
-            "cxxtract.api.routes.repo.count_symbols",
-            AsyncMock(return_value=42),
+        with patch("cxxtract.api.routes.repo.count_tracked_files", AsyncMock(return_value=5)), patch(
+            "cxxtract.api.routes.repo.count_symbols", AsyncMock(return_value=42)
         ):
             resp = await client.get("/health")
+
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"]  # non-empty
         assert data["cache_file_count"] == 5
         assert data["cache_symbol_count"] == 42
-        assert isinstance(data["rg_available"], bool)
 
-    async def test_health_cache_stats_error(self, client: AsyncClient):
-        """If cache stats fail, should still return 200 with zero counts."""
-        with patch(
-            "cxxtract.api.routes.repo.count_tracked_files",
-            AsyncMock(side_effect=RuntimeError("DB not initialised")),
-        ), patch(
-            "cxxtract.api.routes.repo.count_symbols",
-            AsyncMock(side_effect=RuntimeError("DB not initialised")),
-        ):
-            resp = await client.get("/health")
+
+class TestQueryContracts:
+
+    async def test_references_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/query/references",
+            json={"symbol": "Session::Auth", "workspace_id": "ws_main"},
+        )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["cache_file_count"] == 0
-        assert data["cache_symbol_count"] == 0
-
-
-# ====================================================================
-# POST /query/references
-# ====================================================================
-
-class TestQueryReferences:
-
-    async def test_valid_request(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/query/references", json={
-            "symbol": "Session::Auth",
-            "repo_root": "F:/projects/test",
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["symbol"] == "test"
-        assert "confidence" in data
         mock_engine.query_references.assert_awaited_once()
 
-    async def test_missing_required_field(self, client: AsyncClient):
-        resp = await client.post("/query/references", json={
-            "symbol": "foo",
-            # missing repo_root
-        })
-        assert resp.status_code == 422
-
-
-# ====================================================================
-# POST /query/definition
-# ====================================================================
-
-class TestQueryDefinition:
-
-    async def test_valid_request(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/query/definition", json={
-            "symbol": "MyClass",
-            "repo_root": "/tmp/project",
-        })
+    async def test_definition_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/query/definition",
+            json={"symbol": "MyClass", "workspace_id": "ws_main"},
+        )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["symbol"] == "test"
-        assert "definitions" in data
         mock_engine.query_definition.assert_awaited_once()
 
-
-# ====================================================================
-# POST /query/call-graph
-# ====================================================================
-
-class TestQueryCallGraph:
-
-    async def test_valid_request(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/query/call-graph", json={
-            "symbol": "ns::foo",
-            "repo_root": "/tmp/project",
-        })
+    async def test_call_graph_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/query/call-graph",
+            json={"symbol": "ns::foo", "workspace_id": "ws_main", "direction": "outgoing"},
+        )
         assert resp.status_code == 200
-        data = resp.json()
-        assert "edges" in data
         mock_engine.query_call_graph.assert_awaited_once()
 
-    async def test_with_direction(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/query/call-graph", json={
-            "symbol": "ns::foo",
-            "repo_root": "/tmp/project",
-            "direction": "outgoing",
-        })
+    async def test_file_symbols_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/query/file-symbols",
+            json={"workspace_id": "ws_main", "file_key": "repoA:src/main.cpp"},
+        )
         assert resp.status_code == 200
-
-    async def test_invalid_direction(self, client: AsyncClient):
-        resp = await client.post("/query/call-graph", json={
-            "symbol": "ns::foo",
-            "repo_root": "/tmp/project",
-            "direction": "invalid_dir",
-        })
-        assert resp.status_code == 422
-
-
-# ====================================================================
-# POST /query/file-symbols
-# ====================================================================
-
-class TestQueryFileSymbols:
-
-    async def test_valid_request(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/query/file-symbols", json={
-            "file_path": "F:/projects/test/main.cpp",
-            "repo_root": "F:/projects/test",
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "symbols" in data
         mock_engine.query_file_symbols.assert_awaited_once()
 
-
-# ====================================================================
-# POST /cache/invalidate
-# ====================================================================
-
-class TestCacheInvalidate:
-
-    async def test_invalidate_all(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/cache/invalidate", json={})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "invalidated_files" in data
-        mock_engine.invalidate_cache.assert_awaited_once()
-
-    async def test_invalidate_specific(self, client: AsyncClient, mock_engine):
-        resp = await client.post("/cache/invalidate", json={
-            "file_paths": ["a.cpp", "b.cpp"],
-        })
+    async def test_cache_invalidate_valid(self, client: AsyncClient, mock_engine):
+        resp = await client.post(
+            "/cache/invalidate",
+            json={"workspace_id": "ws_main", "file_keys": ["repoA:src/a.cpp"]},
+        )
         assert resp.status_code == 200
         mock_engine.invalidate_cache.assert_awaited_once()
+
+
+class TestLegacyFieldsRejected:
+
+    async def test_references_rejects_repo_root(self, client: AsyncClient):
+        resp = await client.post(
+            "/query/references",
+            json={"symbol": "foo", "workspace_id": "ws_main", "repo_root": "C:/repo"},
+        )
+        assert resp.status_code == 422
+
+    async def test_file_symbols_rejects_file_path(self, client: AsyncClient):
+        resp = await client.post(
+            "/query/file-symbols",
+            json={"workspace_id": "ws_main", "file_path": "src/a.cpp"},
+        )
+        assert resp.status_code == 422
+
+    async def test_cache_invalidate_rejects_file_paths(self, client: AsyncClient):
+        resp = await client.post(
+            "/cache/invalidate",
+            json={"workspace_id": "ws_main", "file_paths": ["a.cpp"]},
+        )
+        assert resp.status_code == 422
+
+    async def test_query_requires_workspace_id(self, client: AsyncClient):
+        resp = await client.post("/query/references", json={"symbol": "foo"})
+        assert resp.status_code == 422

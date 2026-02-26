@@ -1,0 +1,16 @@
+workspace_id: "ws_main"
+repos:
+  - repo_id: "repoA"
+    root: "repos/repoA"
+    compile_commands: "repos/repoA/build/compile_commands.json"
+    default_branch: "main"
+    depends_on: ["repoB"]
+  - repo_id: "repoB"
+    root: "repos/repoB"
+    compile_commands: "repos/repoB/build/compile_commands.json"
+    default_branch: "main"
+    depends_on: []
+path_remaps:
+  - from_prefix: "C:/vcpkg/installed/x64-windows/include"
+    to_repo_id: "repoB"
+    to_prefix: "repos/repoB/include"

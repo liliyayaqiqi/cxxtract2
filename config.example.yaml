@@ -7,7 +7,11 @@ rg_binary: "rg.exe"
 # Path to the cpp-extractor binary
 extractor_binary: "./cpp-extractor/build/Release/cpp-extractor.exe"
 
-# Default path to compile_commands.json (can be overridden per-request)
+# Workspace manifest file name
+workspace_manifest_name: "workspace.yaml"
+
+# Optional fallback compile_commands.json path.
+# In v3, prefer per-repo compile_commands from workspace.yaml and repo_overrides.
 default_compile_commands: ""
 
 # Path to the SQLite database file
@@ -24,6 +28,18 @@ recall_timeout_s: 30
 
 # Timeout in seconds for a single cpp-extractor invocation
 parse_timeout_s: 120
+
+# Single-writer queue settings (SQLite write contention protection)
+writer_queue_size: 1024
+writer_batch_size: 10
+writer_retry_attempts: 3
+writer_retry_delay_ms: 200
+
+# Overlay metadata controls
+max_overlay_files: 5000
+max_overlay_rows: 2000000
+context_ttl_hours: 72
+context_disk_budget_bytes: 4294967296
 
 # Host and port for the FastAPI server
 host: "127.0.0.1"
