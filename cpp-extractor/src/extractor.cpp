@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <string>
 #include <unordered_set>
@@ -82,6 +83,35 @@ void to_json(nlohmann::json& j, const ExtractionResult& r) {
 // ==================================================================
 
 namespace {
+
+bool cursor_equals(CXCursor lhs, CXCursor rhs) {
+    return clang_equalCursors(lhs, rhs) != 0;
+}
+
+
+/// RAII wrapper for token buffers.
+class ClangTokens {
+public:
+    ClangTokens(CXTranslationUnit tu, CXToken* tokens, unsigned count)
+        : tu_(tu), tokens_(tokens), count_(count) {}
+
+    ~ClangTokens() {
+        if (tokens_ != nullptr) {
+            clang_disposeTokens(tu_, tokens_, count_);
+        }
+    }
+
+    ClangTokens(const ClangTokens&) = delete;
+    ClangTokens& operator=(const ClangTokens&) = delete;
+
+    CXToken* data() const { return tokens_; }
+    unsigned size() const { return count_; }
+
+private:
+    CXTranslationUnit tu_ = nullptr;
+    CXToken* tokens_ = nullptr;
+    unsigned count_ = 0;
+};
 
 /// RAII wrapper for CXString.
 class ClangString {
@@ -206,6 +236,55 @@ bool is_function_like(CXCursorKind kind) {
 }
 
 
+/// Check if a cursor kind represents a callable declaration target.
+bool is_callable_decl_kind(CXCursorKind kind) {
+    switch (kind) {
+        case CXCursor_FunctionDecl:
+        case CXCursor_CXXMethod:
+        case CXCursor_Constructor:
+        case CXCursor_Destructor:
+        case CXCursor_FunctionTemplate:
+        case CXCursor_ConversionFunction:
+            return true;
+        default:
+            return false;
+    }
+}
+
+
+bool is_assignment_like_token(const std::string& token) {
+    return token == "=" || token == "+=" || token == "-=" || token == "*=" ||
+           token == "/=" || token == "%=" || token == "<<=" || token == ">>=" ||
+           token == "&=" || token == "^=" || token == "|=";
+}
+
+
+bool should_drop_compile_arg(const std::string& arg) {
+    return arg == "/nologo" || arg == "/Zi" || arg == "/Z7" || arg == "/FS" ||
+           arg == "/RTC1" || arg == "/RTCc" || arg == "/RTCs" || arg == "/RTCu" ||
+           arg == "/Od" || arg == "/Ob0" || arg == "/EHsc" || arg == "/utf-8" ||
+           arg == "/permissive-" || arg == "/Zc:twoPhase-" || arg == "-MD" ||
+           arg == "-MDd" || arg == "-MT" || arg == "-MTd" || arg == "/c" ||
+           arg == "-c" || arg.rfind("/Fo", 0) == 0 || arg.rfind("/Fd", 0) == 0;
+}
+
+
+bool is_call_target_expr_kind(CXCursorKind kind) {
+    switch (kind) {
+        case CXCursor_MemberRefExpr:
+        case CXCursor_MemberRef:
+        case CXCursor_DeclRefExpr:
+        case CXCursor_OverloadedDeclRef:
+        case CXCursor_UnexposedExpr:
+        case CXCursor_CallExpr:
+        case CXCursor_TypeRef:
+            return true;
+        default:
+            return false;
+    }
+}
+
+
 /// Check if a cursor is in the main file (not a system/included header).
 bool is_in_main_file(CXCursor cursor, CXTranslationUnit tu) {
     CXSourceLocation loc = clang_getCursorLocation(cursor);
@@ -248,6 +327,271 @@ unsigned get_extent_end_line(CXCursor cursor) {
 }
 
 
+std::vector<std::string> get_cursor_tokens(CXTranslationUnit tu, CXCursor cursor) {
+    std::vector<std::string> tokens_out;
+    if (tu == nullptr) {
+        return tokens_out;
+    }
+
+    CXSourceRange range = clang_getCursorExtent(cursor);
+    if (clang_Range_isNull(range)) {
+        return tokens_out;
+    }
+
+    CXToken* tokens = nullptr;
+    unsigned token_count = 0;
+    clang_tokenize(tu, range, &tokens, &token_count);
+    ClangTokens holder(tu, tokens, token_count);
+
+    tokens_out.reserve(token_count);
+    for (unsigned i = 0; i < token_count; ++i) {
+        ClangString spelling(clang_getTokenSpelling(tu, holder.data()[i]));
+        tokens_out.push_back(spelling.str());
+    }
+    return tokens_out;
+}
+
+
+/// Collect direct AST children for manual recursive traversal and subtree queries.
+std::vector<CXCursor> get_children(CXCursor cursor) {
+    struct ChildCollector {
+        std::vector<CXCursor>* children = nullptr;
+    } collector;
+    std::vector<CXCursor> children;
+    collector.children = &children;
+
+    clang_visitChildren(
+        cursor,
+        [](CXCursor child, CXCursor, CXClientData data) {
+            auto* collector_ctx = static_cast<ChildCollector*>(data);
+            collector_ctx->children->push_back(child);
+            return CXChildVisit_Continue;
+        },
+        &collector
+    );
+    return children;
+}
+
+
+bool cursor_is_descendant_of(CXCursor cursor, CXCursor ancestor) {
+    if (clang_Cursor_isNull(cursor) || clang_Cursor_isNull(ancestor)) {
+        return false;
+    }
+    if (cursor_equals(cursor, ancestor)) {
+        return true;
+    }
+    for (const auto& child : get_children(ancestor)) {
+        if (cursor_is_descendant_of(cursor, child)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+bool cursor_is_in_first_child_subtree(CXCursor parent, CXCursor cursor) {
+    const auto children = get_children(parent);
+    if (children.empty()) {
+        return false;
+    }
+    return cursor_is_descendant_of(cursor, children.front());
+}
+
+
+CXCursor canonical_callable_cursor(CXCursor cursor) {
+    if (clang_Cursor_isNull(cursor)) {
+        return clang_getNullCursor();
+    }
+
+    const auto pick_if_callable = [](CXCursor candidate) -> CXCursor {
+        if (!clang_Cursor_isNull(candidate) &&
+            is_callable_decl_kind(clang_getCursorKind(candidate))) {
+            return candidate;
+        }
+        return clang_getNullCursor();
+    };
+
+    CXCursor original = pick_if_callable(cursor);
+    CXCursor canonical = pick_if_callable(clang_getCanonicalCursor(cursor));
+    CXCursor definition = pick_if_callable(clang_getCursorDefinition(cursor));
+
+    if (!clang_Cursor_isNull(definition)) {
+        return definition;
+    }
+    if (!clang_Cursor_isNull(canonical)) {
+        CXCursor canonical_definition = pick_if_callable(clang_getCursorDefinition(canonical));
+        if (!clang_Cursor_isNull(canonical_definition)) {
+            return canonical_definition;
+        }
+        return canonical;
+    }
+    return original;
+}
+
+
+CXCursor resolve_reference_target(
+    CXCursor expr_cursor,
+    CXCursor /*parent*/,
+    CXTranslationUnit /*tu*/,
+    bool in_call_context
+) {
+    CXCursor referenced = clang_getCursorReferenced(expr_cursor);
+    if (clang_Cursor_isNull(referenced)) {
+        return clang_getNullCursor();
+    }
+
+    CXCursor callable = canonical_callable_cursor(referenced);
+    if (!clang_Cursor_isNull(callable)) {
+        return callable;
+    }
+
+    if (in_call_context) {
+        return clang_getNullCursor();
+    }
+    return referenced;
+}
+
+
+int call_target_cursor_score(CXCursor node, int depth) {
+    int score = 0;
+    switch (clang_getCursorKind(node)) {
+        case CXCursor_MemberRefExpr:
+        case CXCursor_MemberRef:
+            score = 500;
+            break;
+        case CXCursor_DeclRefExpr:
+            score = 400;
+            break;
+        case CXCursor_OverloadedDeclRef:
+            score = 350;
+            break;
+        case CXCursor_CallExpr:
+            score = 300;
+            break;
+        case CXCursor_TypeRef:
+            score = 250;
+            break;
+        case CXCursor_UnexposedExpr:
+            score = 200;
+            break;
+        default:
+            score = 100;
+            break;
+    }
+    return score - (depth * 10);
+}
+
+
+struct CallTargetCandidate {
+    CXCursor target = clang_getNullCursor();
+    int score = std::numeric_limits<int>::min();
+};
+
+
+void collect_callable_candidates(
+    CXCursor cursor,
+    int depth,
+    CallTargetCandidate* best_candidate
+) {
+    if (clang_Cursor_isNull(cursor) || best_candidate == nullptr) {
+        return;
+    }
+
+    CXCursor referenced = clang_getCursorReferenced(cursor);
+    CXCursor callable = canonical_callable_cursor(referenced);
+    if (clang_Cursor_isNull(callable) &&
+        is_callable_decl_kind(clang_getCursorKind(cursor))) {
+        callable = canonical_callable_cursor(cursor);
+    }
+
+    if (!clang_Cursor_isNull(callable)) {
+        int score = call_target_cursor_score(cursor, depth);
+        if (score > best_candidate->score) {
+            best_candidate->target = callable;
+            best_candidate->score = score;
+        }
+    }
+
+    for (const auto& child : get_children(cursor)) {
+        collect_callable_candidates(child, depth + 1, best_candidate);
+    }
+}
+
+
+CXCursor get_call_callee_root(CXCursor call_cursor) {
+    const auto children = get_children(call_cursor);
+    if (children.empty()) {
+        return clang_getNullCursor();
+    }
+
+    for (const auto& child : children) {
+        CXCursorKind kind = clang_getCursorKind(child);
+        if (is_call_target_expr_kind(kind)) {
+            return child;
+        }
+    }
+    return children.front();
+}
+
+
+CXCursor resolve_call_target(CXCursor call_cursor, CXTranslationUnit /*tu*/) {
+    CXCursor direct = canonical_callable_cursor(clang_getCursorReferenced(call_cursor));
+    if (!clang_Cursor_isNull(direct)) {
+        return direct;
+    }
+
+    CXCursor callee_root = get_call_callee_root(call_cursor);
+    if (clang_Cursor_isNull(callee_root)) {
+        return clang_getNullCursor();
+    }
+
+    CallTargetCandidate best_candidate;
+    collect_callable_candidates(callee_root, 0, &best_candidate);
+    return best_candidate.target;
+}
+
+
+std::vector<std::string> sanitise_clang_args(const std::vector<std::string>& clang_args) {
+    std::vector<std::string> out;
+    out.reserve(clang_args.size() + 8);
+
+    for (const auto& raw_arg : clang_args) {
+        if (raw_arg.empty() || should_drop_compile_arg(raw_arg)) {
+            continue;
+        }
+
+        if (raw_arg.rfind("/D", 0) == 0 && raw_arg.size() > 2) {
+            out.push_back("-D" + raw_arg.substr(2));
+            continue;
+        }
+
+        if (raw_arg.rfind("/I", 0) == 0 && raw_arg.size() > 2) {
+            out.push_back("-I" + raw_arg.substr(2));
+            continue;
+        }
+
+        if (raw_arg.rfind("/FI", 0) == 0 && raw_arg.size() > 3) {
+            out.push_back("-include");
+            out.push_back(raw_arg.substr(3));
+            continue;
+        }
+
+        if (raw_arg.rfind("/std:", 0) == 0 && raw_arg.size() > 5) {
+            out.push_back("-std=" + raw_arg.substr(5));
+            continue;
+        }
+
+        if (raw_arg == "-TP" || raw_arg == "/TP") {
+            continue;
+        }
+
+        out.push_back(raw_arg);
+    }
+
+    return out;
+}
+
+
 /// Find the nearest enclosing function-like cursor by walking parents.
 CXCursor find_enclosing_function(CXCursor cursor, CXTranslationUnit tu) {
     CXCursor parent = clang_getCursorSemanticParent(cursor);
@@ -274,9 +618,7 @@ struct VisitorContext {
     ActionFilter filter = ActionFilter::ExtractAll;
     CXTranslationUnit tu = nullptr;
     std::string main_file;
-
-    // Caller stack for tracking call edges
-    std::vector<CXCursor> caller_stack;
+    std::vector<CXCursor> ancestors;
 
     // Dedup sets
     std::set<std::string> seen_symbols;  // qualified_name + kind + line for dedup
@@ -292,42 +634,165 @@ struct VisitorContext {
     }
 };
 
+bool cursor_is_under_call_callee_path(CXCursor cursor, const VisitorContext& ctx) {
+    for (auto it = ctx.ancestors.rbegin(); it != ctx.ancestors.rend(); ++it) {
+        if (clang_getCursorKind(*it) != CXCursor_CallExpr) {
+            continue;
+        }
+        CXCursor callee_root = get_call_callee_root(*it);
+        if (clang_Cursor_isNull(callee_root)) {
+            return false;
+        }
+        return cursor_is_descendant_of(cursor, callee_root);
+    }
+    return false;
+}
 
-/// Recursive AST visitor callback for libclang.
-CXChildVisitResult visit_cursor(CXCursor cursor, CXCursor parent, CXClientData client_data) {
-    auto* ctx = static_cast<VisitorContext*>(client_data);
-    CXCursorKind kind = clang_getCursorKind(cursor);
 
-    // Skip system headers entirely
-    if (is_in_system_header(cursor)) {
-        return CXChildVisit_Continue;
+bool is_nonlocal_reference_target(CXCursor referenced) {
+    if (clang_Cursor_isNull(referenced) || is_in_system_header(referenced)) {
+        return false;
     }
 
-    // ---- Symbol collection ----
+    CXCursorKind ref_decl_kind = clang_getCursorKind(referenced);
+    if (ref_decl_kind == CXCursor_ParmDecl) {
+        return false;
+    }
+    if (ref_decl_kind == CXCursor_VarDecl) {
+        CXCursor ref_parent = clang_getCursorSemanticParent(referenced);
+        if (is_function_like(clang_getCursorKind(ref_parent))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+std::string classify_ref_kind(CXCursor cursor, const VisitorContext& ctx) {
+    for (auto it = ctx.ancestors.rbegin(); it != ctx.ancestors.rend(); ++it) {
+        CXCursor ancestor = *it;
+        CXCursorKind kind = clang_getCursorKind(ancestor);
+
+        if (kind == CXCursor_UnexposedExpr || kind == CXCursor_ParenExpr ||
+            kind == CXCursor_MemberRefExpr || kind == CXCursor_MemberRef ||
+            kind == CXCursor_DeclRefExpr) {
+            continue;
+        }
+
+        if (kind == CXCursor_CompoundAssignOperator) {
+            if (cursor_is_in_first_child_subtree(ancestor, cursor)) {
+                return "write";
+            }
+            break;
+        }
+
+        if (kind == CXCursor_BinaryOperator) {
+            if (cursor_is_in_first_child_subtree(ancestor, cursor)) {
+                for (const auto& token : get_cursor_tokens(ctx.tu, ancestor)) {
+                    if (is_assignment_like_token(token)) {
+                        return "write";
+                    }
+                }
+            }
+            break;
+        }
+
+        if (kind == CXCursor_UnaryOperator) {
+            if (cursor_is_in_first_child_subtree(ancestor, cursor)) {
+                const auto tokens = get_cursor_tokens(ctx.tu, ancestor);
+                for (const auto& token : tokens) {
+                    if (token == "++" || token == "--") {
+                        return "write";
+                    }
+                }
+                for (const auto& token : tokens) {
+                    if (token == "&") {
+                        return "addr";
+                    }
+                }
+            }
+            break;
+        }
+
+        if (kind == CXCursor_CallExpr) {
+            break;
+        }
+    }
+
+    return "read";
+}
+
+
+CXCursor find_enclosing_function_in_ancestors(const VisitorContext& ctx) {
+    for (auto it = ctx.ancestors.rbegin(); it != ctx.ancestors.rend(); ++it) {
+        if (is_function_like(clang_getCursorKind(*it))) {
+            return *it;
+        }
+    }
+    return clang_getNullCursor();
+}
+
+
+void emit_call_from_cursor(CXCursor cursor, VisitorContext* ctx) {
+    CXCursor referenced = resolve_call_target(cursor, ctx->tu);
+    if (clang_Cursor_isNull(referenced) || is_in_system_header(referenced)) {
+        return;
+    }
+
+    auto loc_info = get_cursor_loc(cursor);
+    if (!loc_info.valid) {
+        return;
+    }
+
+    std::string callee_name = build_qualified_name(referenced);
+    ctx->result->references.push_back(ReferenceInfo{
+        callee_name,
+        static_cast<int>(loc_info.line),
+        static_cast<int>(loc_info.col),
+        "call"
+    });
+
+    CXCursor caller = find_enclosing_function_in_ancestors(*ctx);
+    if (clang_Cursor_isNull(caller)) {
+        caller = find_enclosing_function(cursor, ctx->tu);
+    }
+    if (!clang_Cursor_isNull(caller)) {
+        std::string caller_name = build_qualified_name(caller);
+        ctx->result->call_edges.push_back(CallEdge{
+            caller_name,
+            callee_name,
+            static_cast<int>(loc_info.line)
+        });
+    }
+}
+
+
+void visit_cursor_recursive(CXCursor cursor, CXCursor parent, VisitorContext* ctx) {
+    CXCursorKind kind = clang_getCursorKind(cursor);
+
+    if (is_in_system_header(cursor)) {
+        return;
+    }
+
     if (ctx->should_collect_symbols() && is_symbol_kind(kind)) {
-        // For classes/structs/enums, only collect definitions
         if (kind == CXCursor_ClassDecl || kind == CXCursor_StructDecl ||
             kind == CXCursor_UnionDecl || kind == CXCursor_EnumDecl) {
             if (!clang_isCursorDefinition(cursor)) {
-                return CXChildVisit_Recurse;
+                goto recurse_children;
             }
         }
 
-        // Skip VarDecl that are local variables (inside functions)
         if (kind == CXCursor_VarDecl) {
             CXCursor sem_parent = clang_getCursorSemanticParent(cursor);
-            CXCursorKind parent_kind = clang_getCursorKind(sem_parent);
-            if (is_function_like(parent_kind)) {
-                // This is a local variable — skip it
-                return CXChildVisit_Recurse;
+            if (is_function_like(clang_getCursorKind(sem_parent))) {
+                goto recurse_children;
             }
         }
 
-        // Skip anonymous namespaces
         if (kind == CXCursor_Namespace) {
             ClangString ns_name(clang_getCursorSpelling(cursor));
             if (std::strlen(ns_name.c_str()) == 0) {
-                return CXChildVisit_Recurse;
+                goto recurse_children;
             }
         }
 
@@ -338,7 +803,6 @@ CXChildVisitResult visit_cursor(CXCursor cursor, CXCursor parent, CXClientData c
             std::string kind_str = cursor_kind_to_symbol_kind(kind, cursor);
             unsigned end_line = get_extent_end_line(cursor);
 
-            // Dedup key
             std::string dedup_key = qname + "|" + kind_str + "|" +
                                     std::to_string(loc_info.line);
             if (ctx->seen_symbols.find(dedup_key) == ctx->seen_symbols.end()) {
@@ -355,130 +819,38 @@ CXChildVisitResult visit_cursor(CXCursor cursor, CXCursor parent, CXClientData c
         }
     }
 
-    // ---- Reference & call-edge collection ----
     if (ctx->should_collect_refs()) {
-        // Call expressions -> call edges + call references
         if (kind == CXCursor_CallExpr) {
-            CXCursor referenced = clang_getCursorReferenced(cursor);
-            if (!clang_Cursor_isNull(referenced) && !is_in_system_header(referenced)) {
-                auto loc_info = get_cursor_loc(cursor);
-                if (loc_info.valid) {
-                    std::string callee_name = build_qualified_name(referenced);
-
-                    // Add reference
-                    ctx->result->references.push_back(ReferenceInfo{
-                        callee_name,
-                        static_cast<int>(loc_info.line),
-                        static_cast<int>(loc_info.col),
-                        "call"
-                    });
-
-                    // Find caller for call edge
-                    CXCursor caller = find_enclosing_function(cursor, ctx->tu);
-                    if (!clang_Cursor_isNull(caller)) {
-                        std::string caller_name = build_qualified_name(caller);
-                        ctx->result->call_edges.push_back(CallEdge{
-                            caller_name,
-                            callee_name,
-                            static_cast<int>(loc_info.line)
-                        });
-                    }
-                }
-            }
+            emit_call_from_cursor(cursor, ctx);
         }
 
-        // DeclRefExpr -> read/write/addr references (non-call only)
-        if (kind == CXCursor_DeclRefExpr) {
-            CXCursor referenced = clang_getCursorReferenced(cursor);
-            if (!clang_Cursor_isNull(referenced) && !is_in_system_header(referenced)) {
-                CXCursorKind ref_decl_kind = clang_getCursorKind(referenced);
-
-                // Skip local variables and parameters
-                if (ref_decl_kind == CXCursor_ParmDecl) {
-                    return CXChildVisit_Recurse;
-                }
-                if (ref_decl_kind == CXCursor_VarDecl) {
-                    CXCursor ref_parent = clang_getCursorSemanticParent(referenced);
-                    if (is_function_like(clang_getCursorKind(ref_parent))) {
-                        return CXChildVisit_Recurse;
-                    }
-                }
-
-                // Skip if parent is a CallExpr (already handled above)
-                CXCursorKind parent_kind = clang_getCursorKind(parent);
-                if (parent_kind == CXCursor_CallExpr) {
-                    return CXChildVisit_Recurse;
-                }
-
-                // Skip function-like decls whose DeclRefExpr appears
-                // inside an UnexposedExpr wrapping a CallExpr — those
-                // are already captured by the CallExpr handler above.
-                if (is_function_like(ref_decl_kind) ||
-                    ref_decl_kind == CXCursor_FunctionTemplate) {
-                    // Walk up: if any ancestor up to 3 levels is a CallExpr,
-                    // this reference is the callee of that call — skip it.
-                    CXCursor ancestor = parent;
-                    for (int depth = 0; depth < 3; ++depth) {
-                        if (clang_Cursor_isNull(ancestor)) break;
-                        CXCursorKind ak = clang_getCursorKind(ancestor);
-                        if (ak == CXCursor_CallExpr) {
-                            goto skip_declref;
-                        }
-                        if (ak == CXCursor_TranslationUnit) break;
-                        ancestor = clang_getCursorLexicalParent(ancestor);
-                    }
-                }
-
-                {
+        if (kind == CXCursor_DeclRefExpr || kind == CXCursor_MemberRefExpr ||
+            kind == CXCursor_MemberRef) {
+            bool in_call_context = cursor_is_under_call_callee_path(cursor, *ctx);
+            CXCursor referenced = resolve_reference_target(cursor, parent, ctx->tu, in_call_context);
+            if (!clang_Cursor_isNull(referenced) && is_nonlocal_reference_target(referenced)) {
+                if (!(in_call_context &&
+                      !clang_Cursor_isNull(canonical_callable_cursor(referenced)))) {
                     auto loc_info = get_cursor_loc(cursor);
                     if (loc_info.valid) {
-                        std::string ref_name = build_qualified_name(referenced);
                         ctx->result->references.push_back(ReferenceInfo{
-                            ref_name,
+                            build_qualified_name(referenced),
                             static_cast<int>(loc_info.line),
                             static_cast<int>(loc_info.col),
-                            "read"
+                            classify_ref_kind(cursor, *ctx)
                         });
                     }
                 }
-                skip_declref:;
             }
         }
 
-        // MemberRefExpr -> member references (non-call only)
-        // When the parent is a CallExpr, the CallExpr handler already
-        // captured this as a "call" reference + call edge, so skip.
-        if (kind == CXCursor_MemberRefExpr) {
-            CXCursorKind parent_kind = clang_getCursorKind(parent);
-            if (parent_kind == CXCursor_CallExpr) {
-                // Already handled by CallExpr visitor — skip to avoid duplicates
-                return CXChildVisit_Recurse;
-            }
-
-            CXCursor referenced = clang_getCursorReferenced(cursor);
-            if (!clang_Cursor_isNull(referenced) && !is_in_system_header(referenced)) {
-                auto loc_info = get_cursor_loc(cursor);
-                if (loc_info.valid) {
-                    std::string ref_name = build_qualified_name(referenced);
-                    ctx->result->references.push_back(ReferenceInfo{
-                        ref_name,
-                        static_cast<int>(loc_info.line),
-                        static_cast<int>(loc_info.col),
-                        "read"
-                    });
-                }
-            }
-        }
-
-        // Type references
         if (kind == CXCursor_TypeRef) {
             CXCursor referenced = clang_getCursorReferenced(cursor);
             if (!clang_Cursor_isNull(referenced) && !is_in_system_header(referenced)) {
                 auto loc_info = get_cursor_loc(cursor);
                 if (loc_info.valid) {
-                    std::string ref_name = build_qualified_name(referenced);
                     ctx->result->references.push_back(ReferenceInfo{
-                        ref_name,
+                        build_qualified_name(referenced),
                         static_cast<int>(loc_info.line),
                         static_cast<int>(loc_info.col),
                         "type_ref"
@@ -488,7 +860,12 @@ CXChildVisitResult visit_cursor(CXCursor cursor, CXCursor parent, CXClientData c
         }
     }
 
-    return CXChildVisit_Recurse;
+recurse_children:
+    ctx->ancestors.push_back(cursor);
+    for (const auto& child : get_children(cursor)) {
+        visit_cursor_recursive(child, cursor, ctx);
+    }
+    ctx->ancestors.pop_back();
 }
 
 
@@ -539,7 +916,8 @@ ExtractionResult run_extraction(
     c_args.push_back("-x");
     c_args.push_back("c++");
 
-    for (const auto& arg : clang_args) {
+    const auto normalised_args = sanitise_clang_args(clang_args);
+    for (const auto& arg : normalised_args) {
         c_args.push_back(arg.c_str());
     }
 
@@ -608,7 +986,7 @@ ExtractionResult run_extraction(
     ctx.tu = tu;
     ctx.main_file = normalise_path(file_path);
 
-    clang_visitChildren(root, visit_cursor, &ctx);
+    visit_cursor_recursive(root, clang_getNullCursor(), &ctx);
 
     // --- Post-processing: deduplicate all result vectors ---
 

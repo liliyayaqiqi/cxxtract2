@@ -82,10 +82,13 @@ class SmokeRunner:
             ("query_definition", self.test_query_definition),
             ("query_call_graph", self.test_query_call_graph),
             ("query_file_symbols", self.test_query_file_symbols),
+            ("explore_rg_search", self.test_explore_rg_search),
+            ("explore_fetch_call_edges", self.test_explore_fetch_call_edges),
             ("explore_list_candidates", self.test_explore_list_candidates),
             ("explore_classify_freshness", self.test_explore_classify_freshness),
             ("explore_fetch_references", self.test_explore_fetch_references),
             ("explore_get_confidence", self.test_explore_get_confidence),
+            ("agent_call_graph_flow", self.test_agent_call_graph_flow),
             ("cache_invalidate", self.test_cache_invalidate),
             ("webhook_gitlab", self.test_webhook_gitlab),
             ("sync_repo", self.test_sync_repo),
@@ -147,6 +150,50 @@ class SmokeRunner:
 
     def _workspace_path(self) -> str:
         return f"/workspace/{urllib.parse.quote(self.args.workspace_id)}"
+
+    def _rg_search_payload(self) -> dict[str, Any]:
+        return {
+            "workspace_id": self.args.workspace_id,
+            "query": self.args.rg_query,
+            "mode": self.args.rg_mode,
+            "analysis_context": {"mode": "baseline"},
+            "scope": {
+                "entry_repos": self._entry_repos(),
+                "max_repo_hops": self.args.max_repo_hops,
+            },
+            "max_hits": self.args.rg_max_hits,
+            "max_files": self.args.max_recall_files or 50,
+            "timeout_s": self.args.rg_timeout_s,
+            "context_lines": self.args.rg_context_lines,
+        }
+
+    def _require_rg_query(self, test_name: str) -> str | None:
+        rg_query = (self.args.rg_query or "").strip()
+        if not rg_query:
+            return None
+        return rg_query
+
+    def _run_explore_rg_search(self, test_name: str) -> tuple[int, Any]:
+        payload = self._rg_search_payload()
+        status, body = self.client.post("/explore/rg-search", payload)
+        self._expect(test_name, status, 200, body)
+        return status, body
+
+    def _candidate_file_keys_from_rg(self, body: Any) -> list[str]:
+        if not isinstance(body, dict):
+            return []
+        hits = body.get("hits", [])
+        out: list[str] = []
+        seen: set[str] = set()
+        for hit in hits:
+            if not isinstance(hit, dict):
+                continue
+            file_key = str(hit.get("file_key", "")).strip()
+            if not file_key or file_key in seen:
+                continue
+            seen.add(file_key)
+            out.append(file_key)
+        return out
 
     def ensure_workspace(self) -> None:
         if self.state.get("workspace_registered"):
@@ -365,6 +412,66 @@ class SmokeRunner:
         except Exception as exc:
             return self._fail(name, str(exc))
 
+    def test_explore_rg_search(self) -> TestResult:
+        name = "explore_rg_search"
+        try:
+            self.ensure_workspace()
+            rg_query = self._require_rg_query(name)
+            if not rg_query:
+                return self._skip(name, "requires --rg-query for symbol-free text search")
+            _status, body = self._run_explore_rg_search(name)
+            self._dump_response(name, body)
+            return self._ok(name, f"hits={len(body.get('hits', []))}")
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
+    def test_explore_fetch_call_edges(self) -> TestResult:
+        name = "explore_fetch_call_edges"
+        try:
+            self.ensure_workspace()
+            if not (self.args.symbol or "").strip():
+                return self._skip(name, "requires --symbol")
+            rg_query = self._require_rg_query(name)
+            if not rg_query:
+                return self._skip(name, "requires --rg-query to build candidate file set")
+
+            _status, rg_body = self._run_explore_rg_search(name)
+            candidate_keys = self._candidate_file_keys_from_rg(rg_body)
+            if not candidate_keys:
+                return self._skip(name, "rg search returned no candidate files")
+
+            status, parse_body = self.client.post(
+                "/explore/parse-file",
+                {
+                    "workspace_id": self.args.workspace_id,
+                    "file_keys": candidate_keys[: self.args.agent_max_candidate_files],
+                    "max_parse_workers": self.args.max_parse_workers or self.args.agent_parse_workers,
+                    "timeout_s": self.args.agent_parse_timeout_s,
+                    "skip_if_fresh": True,
+                },
+            )
+            self._expect(name, status, 200, parse_body)
+
+            status, body = self.client.post(
+                "/explore/fetch-call-edges",
+                {
+                    "workspace_id": self.args.workspace_id,
+                    "symbol": self.args.symbol,
+                    "direction": self.args.call_direction,
+                    "candidate_file_keys": candidate_keys[: self.args.agent_max_candidate_files],
+                    "excluded_file_keys": [],
+                    "limit": self.args.call_limit,
+                },
+            )
+            self._expect(name, status, 200, body)
+            self._dump_response(name, body)
+            return self._ok(
+                name,
+                f"candidates={len(candidate_keys)} edges={len(body.get('edges', []))}",
+            )
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
     def test_explore_list_candidates(self) -> TestResult:
         name = "explore_list_candidates"
         try:
@@ -428,6 +535,95 @@ class SmokeRunner:
             self._expect(name, status, 200, body)
             self._dump_response(name, body)
             return self._ok(name)
+        except Exception as exc:
+            return self._fail(name, str(exc))
+
+    def test_agent_call_graph_flow(self) -> TestResult:
+        name = "agent_call_graph_flow"
+        try:
+            self.ensure_workspace()
+            if not (self.args.symbol or "").strip():
+                return self._skip(name, "requires --symbol")
+            rg_query = self._require_rg_query(name)
+            if not rg_query:
+                return self._skip(name, "requires --rg-query")
+
+            _status, rg_body = self._run_explore_rg_search(name)
+            candidate_keys = self._candidate_file_keys_from_rg(rg_body)
+            if not candidate_keys:
+                return self._skip(name, "rg search returned no candidate files")
+
+            limited_candidates = candidate_keys[: self.args.agent_max_candidate_files]
+
+            status, parse_body = self.client.post(
+                "/explore/parse-file",
+                {
+                    "workspace_id": self.args.workspace_id,
+                    "file_keys": limited_candidates,
+                    "max_parse_workers": self.args.max_parse_workers or self.args.agent_parse_workers,
+                    "timeout_s": self.args.agent_parse_timeout_s,
+                    "skip_if_fresh": True,
+                },
+            )
+            self._expect(name, status, 200, parse_body)
+
+            status, edge_body = self.client.post(
+                "/explore/fetch-call-edges",
+                {
+                    "workspace_id": self.args.workspace_id,
+                    "symbol": self.args.symbol,
+                    "direction": self.args.call_direction,
+                    "candidate_file_keys": limited_candidates,
+                    "excluded_file_keys": [],
+                    "limit": self.args.call_limit,
+                },
+            )
+            self._expect(name, status, 200, edge_body)
+
+            confidence_verified = list(parse_body.get("parsed_file_keys", [])) + list(parse_body.get("skipped_fresh_file_keys", []))
+            confidence_unparsed = list(parse_body.get("unparsed_file_keys", []))
+            confidence_failed = list(parse_body.get("failed_file_keys", []))
+            status, conf_body = self.client.post(
+                "/explore/get-confidence",
+                {
+                    "verified_files": confidence_verified,
+                    "stale_files": confidence_failed,
+                    "unparsed_files": confidence_unparsed,
+                    "warnings": parse_body.get("parse_warnings", []),
+                    "overlay_mode": parse_body.get("overlay_mode", "sparse"),
+                },
+            )
+            self._expect(name, status, 200, conf_body)
+
+            status, wrapper_body = self.client.post(
+                "/query/call-graph",
+                {
+                    **self._query_payload_base(self.args.symbol),
+                    "direction": self.args.call_direction,
+                },
+            )
+            self._expect(name, status, 200, wrapper_body)
+
+            combined = {
+                "rg_search": rg_body,
+                "parse_file": parse_body,
+                "fetch_call_edges": edge_body,
+                "explore_confidence": conf_body,
+                "query_call_graph": wrapper_body,
+            }
+            self._dump_response(name, combined)
+            return self._ok(
+                name,
+                " -> ".join(
+                    [
+                        f"rg_hits={len(rg_body.get('hits', []))}",
+                        f"candidate_files={len(limited_candidates)}",
+                        f"parsed={len(parse_body.get('parsed_file_keys', []))}",
+                        f"edge_rows={len(edge_body.get('edges', []))}",
+                        f"wrapper_edges={len(wrapper_body.get('edges', []))}",
+                    ]
+                ),
+            )
         except Exception as exc:
             return self._fail(name, str(exc))
 
@@ -610,6 +806,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--manifest-path", required=True)
     parser.add_argument("--symbol", default="main")
     parser.add_argument("--file-key", default="repoA:src/main.cpp")
+    parser.add_argument("--rg-query", default="", help="Free-text query for /explore/rg-search")
+    parser.add_argument("--rg-mode", default="literal", choices=["literal", "regex", "symbol"])
+    parser.add_argument("--rg-max-hits", type=int, default=100)
+    parser.add_argument("--rg-timeout-s", type=int, default=20)
+    parser.add_argument("--rg-context-lines", type=int, default=0)
+    parser.add_argument("--call-direction", default="both", choices=["outgoing", "incoming", "both"])
+    parser.add_argument("--call-limit", type=int, default=2000)
+    parser.add_argument("--agent-max-candidate-files", type=int, default=50)
+    parser.add_argument("--agent-parse-workers", type=int, default=4)
+    parser.add_argument("--agent-parse-timeout-s", type=int, default=120)
     parser.add_argument("--repo-id", default="")
     parser.add_argument("--commit-sha", default="")
     parser.add_argument("--branch", default="")
