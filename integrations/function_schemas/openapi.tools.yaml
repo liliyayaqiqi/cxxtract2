@@ -1,0 +1,3274 @@
+openapi: 3.1.0
+info:
+  title: CXXtract2 Tool Catalog
+  version: 1.0.0
+  description: Generated tool interface for autonomous LLM agents.
+servers:
+- url: http://127.0.0.1:8000
+paths:
+  /query/references:
+    post:
+      operationId: cxxtract_query_references
+      summary: cxxtract.query.references
+      description: 'What this tool does: Resolve a symbol, refresh semantic facts
+        as needed, and return references with confidence.
+
+        When to use: Prefer this fast-track aggregated tool when the target symbol/function
+        is already known and you want a direct answer in one round trip.
+
+        When not to use: Avoid this when symbol identity is uncertain or you need
+        explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*`
+        tools instead.
+
+        Input prerequisites: Known or plausible symbol string and workspace_id.
+
+        Expected output: Returns references plus ConfidenceEnvelope. Response model:
+        `ReferencesResponse`.'
+      tags:
+      - query
+      x-tool-name: cxxtract.query.references
+      x-tool-class: aggregated
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /query/references
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SymbolQueryRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferencesResponse'
+      x-expected-output:
+        model: ReferencesResponse
+        $ref: '#/components/schemas/ReferencesResponse'
+  /query/definition:
+    post:
+      operationId: cxxtract_query_definition
+      summary: cxxtract.query.definition
+      description: 'What this tool does: Resolve one or more symbol definitions in
+        a single fast-track call.
+
+        When to use: Prefer this fast-track aggregated tool when the target symbol/function
+        is already known and you want a direct answer in one round trip.
+
+        When not to use: Avoid this when symbol identity is uncertain or you need
+        explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*`
+        tools instead.
+
+        Input prerequisites: Known or plausible symbol string and workspace_id.
+
+        Expected output: Returns definitions plus ConfidenceEnvelope. Response model:
+        `DefinitionResponse`.'
+      tags:
+      - query
+      x-tool-name: cxxtract.query.definition
+      x-tool-class: aggregated
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /query/definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SymbolQueryRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefinitionResponse'
+      x-expected-output:
+        model: DefinitionResponse
+        $ref: '#/components/schemas/DefinitionResponse'
+  /query/call-graph:
+    post:
+      operationId: cxxtract_query_call_graph
+      summary: cxxtract.query.call_graph
+      description: 'What this tool does: Return call edges around a function symbol
+        with one-shot orchestration.
+
+        When to use: Prefer this fast-track aggregated tool when the target symbol/function
+        is already known and you want a direct answer in one round trip.
+
+        When not to use: Avoid this when symbol identity is uncertain or you need
+        explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*`
+        tools instead.
+
+        Input prerequisites: Qualified function symbol and workspace_id.
+
+        Expected output: Returns edges plus ConfidenceEnvelope. Response model: `CallGraphResponse`.'
+      tags:
+      - query
+      x-tool-name: cxxtract.query.call_graph
+      x-tool-class: aggregated
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /query/call-graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallGraphRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallGraphResponse'
+      x-expected-output:
+        model: CallGraphResponse
+        $ref: '#/components/schemas/CallGraphResponse'
+  /query/file-symbols:
+    post:
+      operationId: cxxtract_query_file_symbols
+      summary: cxxtract.query.file_symbols
+      description: 'What this tool does: Return symbols for one canonical file key.
+
+        When to use: Prefer this fast-track aggregated tool when the target symbol/function
+        is already known and you want a direct answer in one round trip.
+
+        When not to use: Avoid this when symbol identity is uncertain or you need
+        explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*`
+        tools instead.
+
+        Input prerequisites: workspace_id and canonical file_key (repo_id:rel/path).
+
+        Expected output: Returns file symbols plus ConfidenceEnvelope. Response model:
+        `FileSymbolsResponse`.'
+      tags:
+      - query
+      x-tool-name: cxxtract.query.file_symbols
+      x-tool-class: aggregated
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /query/file-symbols
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileSymbolsRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileSymbolsResponse'
+      x-expected-output:
+        model: FileSymbolsResponse
+        $ref: '#/components/schemas/FileSymbolsResponse'
+  /explore/rg-search:
+    post:
+      operationId: cxxtract_explore_rg_search
+      summary: cxxtract.explore.rg_search
+      description: 'What this tool does: Run bounded lexical recall with evidence
+        for candidate discovery.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and query string.
+
+        Expected output: Returns hits, EvidenceItem[], CostEnvelope, CoverageEnvelope.
+        Response model: `RgSearchResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.rg_search
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/rg-search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RgSearchRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RgSearchResponse'
+      x-expected-output:
+        model: RgSearchResponse
+        $ref: '#/components/schemas/RgSearchResponse'
+  /explore/read-file:
+    post:
+      operationId: cxxtract_explore_read_file
+      summary: cxxtract.explore.read_file
+      description: 'What this tool does: Read a bounded line/byte slice from one canonical
+        file key.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and canonical file_key.
+
+        Expected output: Returns content slice, truncation signal, CostEnvelope. Response
+        model: `ReadFileResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.read_file
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/read-file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadFileRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadFileResponse'
+      x-expected-output:
+        model: ReadFileResponse
+        $ref: '#/components/schemas/ReadFileResponse'
+  /explore/get-compile-command:
+    post:
+      operationId: cxxtract_explore_get_compile_command
+      summary: cxxtract.explore.get_compile_command
+      description: 'What this tool does: Inspect the effective compile command and
+        flags hash for semantic trust checks.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and canonical file_key.
+
+        Expected output: Returns compile match_type, cwd, args, flags_hash. Response
+        model: `GetCompileCommandResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.get_compile_command
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/get-compile-command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetCompileCommandRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCompileCommandResponse'
+      x-expected-output:
+        model: GetCompileCommandResponse
+        $ref: '#/components/schemas/GetCompileCommandResponse'
+  /explore/list-candidates:
+    post:
+      operationId: cxxtract_explore_list_candidates
+      summary: cxxtract.explore.list_candidates
+      description: 'What this tool does: Generate merged candidate file keys with
+        provenance and truncation metadata.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and target symbol.
+
+        Expected output: Returns candidates, provenance, CostEnvelope, CoverageEnvelope.
+        Response model: `ListCandidatesResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.list_candidates
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/list-candidates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListCandidatesRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListCandidatesResponse'
+      x-expected-output:
+        model: ListCandidatesResponse
+        $ref: '#/components/schemas/ListCandidatesResponse'
+  /explore/classify-freshness:
+    post:
+      operationId: cxxtract_explore_classify_freshness
+      summary: cxxtract.explore.classify_freshness
+      description: 'What this tool does: Classify candidate files into fresh/stale/unparsed
+        and emit parse queue descriptors.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and candidate_file_keys.
+
+        Expected output: Returns freshness buckets, parse_queue, CostEnvelope, CoverageEnvelope.
+        Response model: `ClassifyFreshnessResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.classify_freshness
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/classify-freshness
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassifyFreshnessRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassifyFreshnessResponse'
+      x-expected-output:
+        model: ClassifyFreshnessResponse
+        $ref: '#/components/schemas/ClassifyFreshnessResponse'
+  /explore/parse-file:
+    post:
+      operationId: cxxtract_explore_parse_file
+      summary: cxxtract.explore.parse_file
+      description: 'What this tool does: Run on-demand semantic parsing and persist
+        facts through single-writer pipeline.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and file_keys selected for parsing.
+
+        Expected output: Returns parsed/failed/skipped lists, persisted_fact_rows,
+        CostEnvelope, CoverageEnvelope. Response model: `ParseFileResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.parse_file
+      x-tool-class: atomic
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /explore/parse-file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseFileRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseFileResponse'
+      x-expected-output:
+        model: ParseFileResponse
+        $ref: '#/components/schemas/ParseFileResponse'
+  /explore/fetch-symbols:
+    post:
+      operationId: cxxtract_explore_fetch_symbols
+      summary: cxxtract.explore.fetch_symbols
+      description: 'What this tool does: Fetch semantic symbol rows from cache for
+        explicit candidate sets.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and target symbol; candidate_file_keys optional
+        but recommended.
+
+        Expected output: Returns symbol rows with evidence and Cost/Coverage envelopes.
+        Response model: `FetchSymbolsResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.fetch_symbols
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/fetch-symbols
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchSymbolsRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchSymbolsResponse'
+      x-expected-output:
+        model: FetchSymbolsResponse
+        $ref: '#/components/schemas/FetchSymbolsResponse'
+  /explore/fetch-references:
+    post:
+      operationId: cxxtract_explore_fetch_references
+      summary: cxxtract.explore.fetch_references
+      description: 'What this tool does: Fetch semantic reference rows from cache
+        for explicit candidate sets.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id and target symbol; candidate_file_keys optional
+        but recommended.
+
+        Expected output: Returns references with evidence and Cost/Coverage envelopes.
+        Response model: `FetchReferencesResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.fetch_references
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/fetch-references
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchReferencesRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchReferencesResponse'
+      x-expected-output:
+        model: FetchReferencesResponse
+        $ref: '#/components/schemas/FetchReferencesResponse'
+  /explore/fetch-call-edges:
+    post:
+      operationId: cxxtract_explore_fetch_call_edges
+      summary: cxxtract.explore.fetch_call_edges
+      description: 'What this tool does: Fetch call edges for explicit symbols and
+        direction from semantic cache.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: workspace_id, symbol, direction, and candidate_file_keys
+        for high precision.
+
+        Expected output: Returns call edges with evidence and Cost/Coverage envelopes.
+        Response model: `FetchCallEdgesResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.fetch_call_edges
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/fetch-call-edges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchCallEdgesRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchCallEdgesResponse'
+      x-expected-output:
+        model: FetchCallEdgesResponse
+        $ref: '#/components/schemas/FetchCallEdgesResponse'
+  /explore/get-confidence:
+    post:
+      operationId: cxxtract_explore_get_confidence
+      summary: cxxtract.explore.get_confidence
+      description: 'What this tool does: Compute ConfidenceEnvelope from explicit
+        verified/stale/unparsed file sets.
+
+        When to use: Use this atomic tool in iterative exploration chains to control
+        recall, freshness, parsing, and semantic verification step-by-step with explicit
+        evidence and bounded Cost/Coverage envelopes.
+
+        When not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*`
+        fast-track tool can answer directly with lower orchestration overhead.
+
+        Input prerequisites: Provide verification sets from prior exploration steps.
+
+        Expected output: Returns ConfidenceEnvelope and CoverageEnvelope. Response
+        model: `GetConfidenceResponse`.'
+      tags:
+      - explore
+      x-tool-name: cxxtract.explore.get_confidence
+      x-tool-class: atomic
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /explore/get-confidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetConfidenceRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetConfidenceResponse'
+      x-expected-output:
+        model: GetConfidenceResponse
+        $ref: '#/components/schemas/GetConfidenceResponse'
+  /cache/invalidate:
+    post:
+      operationId: cxxtract_cache_invalidate
+      summary: cxxtract.cache.invalidate
+      description: 'What this tool does: Invalidate cached semantic facts for one
+        context or a selected file set.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id and optional context_id/file_keys.
+
+        Expected output: Returns invalidated_files count and status message. Response
+        model: `CacheInvalidateResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - cache
+      x-tool-name: cxxtract.cache.invalidate
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /cache/invalidate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CacheInvalidateRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheInvalidateResponse'
+      x-expected-output:
+        model: CacheInvalidateResponse
+        $ref: '#/components/schemas/CacheInvalidateResponse'
+  /workspace/register:
+    post:
+      operationId: cxxtract_workspace_register
+      summary: cxxtract.workspace.register
+      description: 'What this tool does: Register or refresh workspace manifest binding
+        for API operations.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id, root_path, and manifest_path.
+
+        Expected output: Returns workspace metadata and known contexts. Response model:
+        `WorkspaceInfoResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - workspace
+      x-tool-name: cxxtract.workspace.register
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /workspace/register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceRegisterRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceInfoResponse'
+      x-expected-output:
+        model: WorkspaceInfoResponse
+        $ref: '#/components/schemas/WorkspaceInfoResponse'
+  /workspace/{workspace_id}:
+    get:
+      operationId: cxxtract_workspace_get
+      summary: cxxtract.workspace.get
+      description: 'What this tool does: Read workspace metadata, repos, and active
+        contexts.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id path parameter.
+
+        Expected output: Returns WorkspaceInfoResponse. Response model: `WorkspaceInfoResponse`.'
+      tags:
+      - workspace
+      x-tool-name: cxxtract.workspace.get
+      x-tool-class: operational
+      x-side-effectful: false
+      x-http:
+        method: GET
+        path: /workspace/{workspace_id}
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceInfoResponse'
+      x-expected-output:
+        model: WorkspaceInfoResponse
+        $ref: '#/components/schemas/WorkspaceInfoResponse'
+  /workspace/{workspace_id}/refresh-manifest:
+    post:
+      operationId: cxxtract_workspace_refresh_manifest
+      summary: cxxtract.workspace.refresh_manifest
+      description: 'What this tool does: Reload workspace manifest from disk and refresh
+        repo mapping.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id path parameter.
+
+        Expected output: Returns repos_synced count and message. Response model: `WorkspaceRefreshResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - workspace
+      x-tool-name: cxxtract.workspace.refresh_manifest
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /workspace/{workspace_id}/refresh-manifest
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceRefreshResponse'
+      x-expected-output:
+        model: WorkspaceRefreshResponse
+        $ref: '#/components/schemas/WorkspaceRefreshResponse'
+  /context/create-pr-overlay:
+    post:
+      operationId: cxxtract_context_create_pr_overlay
+      summary: cxxtract.context.create_pr_overlay
+      description: 'What this tool does: Create a PR overlay context on top of a baseline
+        for sparse review workflows.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id and PR/base/head identifiers.
+
+        Expected output: Returns new context_id and overlay mode stats. Response model:
+        `ContextCreateOverlayResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - context
+      x-tool-name: cxxtract.context.create_pr_overlay
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /context/create-pr-overlay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextCreateOverlayRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextCreateOverlayResponse'
+      x-expected-output:
+        model: ContextCreateOverlayResponse
+        $ref: '#/components/schemas/ContextCreateOverlayResponse'
+  /context/{context_id}/expire:
+    post:
+      operationId: cxxtract_context_expire
+      summary: cxxtract.context.expire
+      description: 'What this tool does: Expire an overlay context and release associated
+        resources.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: context_id path parameter.
+
+        Expected output: Returns expired boolean and message. Response model: `ContextExpireResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - context
+      x-tool-name: cxxtract.context.expire
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /context/{context_id}/expire
+      parameters:
+      - name: context_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextExpireResponse'
+      x-expected-output:
+        model: ContextExpireResponse
+        $ref: '#/components/schemas/ContextExpireResponse'
+  /webhooks/gitlab:
+    post:
+      operationId: cxxtract_webhook_gitlab
+      summary: cxxtract.webhook.gitlab
+      description: 'What this tool does: Ingest GitLab webhook payloads and enqueue
+        downstream sync/index work.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: event_type and payload with workspace/repo identifiers.
+
+        Expected output: Returns accepted flag and optional job ids. Response model:
+        `WebhookGitLabResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - webhook
+      x-tool-name: cxxtract.webhook.gitlab
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /webhooks/gitlab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookGitLabRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookGitLabResponse'
+      x-expected-output:
+        model: WebhookGitLabResponse
+        $ref: '#/components/schemas/WebhookGitLabResponse'
+  /workspace/{workspace_id}/sync-repo:
+    post:
+      operationId: cxxtract_sync_repo
+      summary: cxxtract.sync.repo
+      description: 'What this tool does: Enqueue deterministic sync for one repo at
+        exact commit SHA.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id path parameter and repo sync request body.
+
+        Expected output: Returns RepoSyncJobResponse. Response model: `RepoSyncJobResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - sync
+      x-tool-name: cxxtract.sync.repo
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /workspace/{workspace_id}/sync-repo
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepoSyncRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoSyncJobResponse'
+      x-expected-output:
+        model: RepoSyncJobResponse
+        $ref: '#/components/schemas/RepoSyncJobResponse'
+  /workspace/{workspace_id}/sync-batch:
+    post:
+      operationId: cxxtract_sync_batch
+      summary: cxxtract.sync.batch
+      description: 'What this tool does: Enqueue sync jobs for multiple repos in one
+        request.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id path parameter and targets list.
+
+        Expected output: Returns list of created sync jobs. Response model: `RepoSyncBatchResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - sync
+      x-tool-name: cxxtract.sync.batch
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /workspace/{workspace_id}/sync-batch
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepoSyncBatchRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoSyncBatchResponse'
+      x-expected-output:
+        model: RepoSyncBatchResponse
+        $ref: '#/components/schemas/RepoSyncBatchResponse'
+  /workspace/{workspace_id}/sync-all-repos:
+    post:
+      operationId: cxxtract_sync_all_repos
+      summary: cxxtract.sync.all_repos
+      description: 'What this tool does: Enqueue sync jobs for all sync-enabled repos
+        in manifest.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id path parameter.
+
+        Expected output: Returns jobs list and skipped repos. Response model: `RepoSyncAllResponse`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - sync
+      x-tool-name: cxxtract.sync.all_repos
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /workspace/{workspace_id}/sync-all-repos
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepoSyncAllRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoSyncAllResponse'
+      x-expected-output:
+        model: RepoSyncAllResponse
+        $ref: '#/components/schemas/RepoSyncAllResponse'
+  /sync-jobs/{job_id}:
+    get:
+      operationId: cxxtract_sync_job_get
+      summary: cxxtract.sync.job_get
+      description: 'What this tool does: Read sync job status and diagnostic fields.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: job_id path parameter.
+
+        Expected output: Returns RepoSyncJobResponse. Response model: `RepoSyncJobResponse`.'
+      tags:
+      - sync
+      x-tool-name: cxxtract.sync.job_get
+      x-tool-class: operational
+      x-side-effectful: false
+      x-http:
+        method: GET
+        path: /sync-jobs/{job_id}
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoSyncJobResponse'
+      x-expected-output:
+        model: RepoSyncJobResponse
+        $ref: '#/components/schemas/RepoSyncJobResponse'
+  /workspace/{workspace_id}/repos/{repo_id}/sync-status:
+    get:
+      operationId: cxxtract_sync_status
+      summary: cxxtract.sync.status
+      description: 'What this tool does: Read latest sync status snapshot for one
+        repository.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id and repo_id path parameters.
+
+        Expected output: Returns RepoSyncStatusResponse. Response model: `RepoSyncStatusResponse`.'
+      tags:
+      - sync
+      x-tool-name: cxxtract.sync.status
+      x-tool-class: operational
+      x-side-effectful: false
+      x-http:
+        method: GET
+        path: /workspace/{workspace_id}/repos/{repo_id}/sync-status
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - name: repo_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoSyncStatusResponse'
+      x-expected-output:
+        model: RepoSyncStatusResponse
+        $ref: '#/components/schemas/RepoSyncStatusResponse'
+  /commit-diff-summaries/upsert:
+    post:
+      operationId: cxxtract_vector_upsert
+      summary: cxxtract.vector.upsert
+      description: 'What this tool does: Store or update commit diff summary and embedding
+        vector.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace/repo/commit identifiers, summary text, embedding
+        payload.
+
+        Expected output: Returns stored CommitDiffSummaryRecord. Response model: `CommitDiffSummaryRecord`.
+
+        Side effects: This tool mutates service/workspace state. Call only with explicit
+        intent and include clear rationale in your plan.'
+      tags:
+      - vector
+      x-tool-name: cxxtract.vector.upsert
+      x-tool-class: operational
+      x-side-effectful: true
+      x-http:
+        method: POST
+        path: /commit-diff-summaries/upsert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitDiffSummaryUpsertRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitDiffSummaryRecord'
+      x-expected-output:
+        model: CommitDiffSummaryRecord
+        $ref: '#/components/schemas/CommitDiffSummaryRecord'
+  /commit-diff-summaries/search:
+    post:
+      operationId: cxxtract_vector_search
+      summary: cxxtract.vector.search
+      description: 'What this tool does: Run top-k vector search over commit summary
+        embeddings.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: query_embedding and workspace scope.
+
+        Expected output: Returns ranked commit summary hits. Response model: `CommitDiffSummarySearchResponse`.'
+      tags:
+      - vector
+      x-tool-name: cxxtract.vector.search
+      x-tool-class: operational
+      x-side-effectful: false
+      x-http:
+        method: POST
+        path: /commit-diff-summaries/search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitDiffSummarySearchRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitDiffSummarySearchResponse'
+      x-expected-output:
+        model: CommitDiffSummarySearchResponse
+        $ref: '#/components/schemas/CommitDiffSummarySearchResponse'
+  /commit-diff-summaries/{workspace_id}/{repo_id}/{commit_sha}:
+    get:
+      operationId: cxxtract_vector_get
+      summary: cxxtract.vector.get
+      description: 'What this tool does: Fetch one commit diff summary record by composite
+        key.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: workspace_id, repo_id, commit_sha path parameters.
+
+        Expected output: Returns found flag and optional record. Response model: `CommitDiffSummaryGetResponse`.'
+      tags:
+      - vector
+      x-tool-name: cxxtract.vector.get
+      x-tool-class: operational
+      x-side-effectful: false
+      x-http:
+        method: GET
+        path: /commit-diff-summaries/{workspace_id}/{repo_id}/{commit_sha}
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - name: repo_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - name: commit_sha
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - name: include_embedding
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitDiffSummaryGetResponse'
+      x-expected-output:
+        model: CommitDiffSummaryGetResponse
+        $ref: '#/components/schemas/CommitDiffSummaryGetResponse'
+  /health:
+    get:
+      operationId: cxxtract_health_get
+      summary: cxxtract.health.get
+      description: 'What this tool does: Read service health, queue depths, tool availability,
+        and vector status.
+
+        When to use: Use this operational tool only when workspace/context/cache/sync/vector
+        state actions are explicitly intended by the task.
+
+        When not to use: Avoid for pure read-only semantic analysis unless this exact
+        operational state/control operation is required.
+
+        Input prerequisites: No inputs.
+
+        Expected output: Returns HealthResponse counters and availability flags. Response
+        model: `HealthResponse`.'
+      tags:
+      - health
+      x-tool-name: cxxtract.health.get
+      x-tool-class: operational
+      x-side-effectful: false
+      x-http:
+        method: GET
+        path: /health
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+      x-expected-output:
+        model: HealthResponse
+        $ref: '#/components/schemas/HealthResponse'
+components:
+  schemas:
+    CacheInvalidateRequest:
+      additionalProperties: false
+      description: Request body for /cache/invalidate.
+      properties:
+        workspace_id:
+          description: Workspace identifier
+          minLength: 1
+          title: Workspace Id
+          type: string
+        context_id:
+          default: ''
+          description: Context ID. Empty means active baseline.
+          title: Context Id
+          type: string
+        file_keys:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          default: null
+          description: Specific canonical file keys to invalidate. If None, clear
+            the context cache.
+          title: File Keys
+      required:
+      - workspace_id
+      title: CacheInvalidateRequest
+      type: object
+    CacheInvalidateResponse:
+      description: Response for /cache/invalidate.
+      properties:
+        invalidated_files:
+          title: Invalidated Files
+          type: integer
+        message:
+          title: Message
+          type: string
+      required:
+      - invalidated_files
+      - message
+      title: CacheInvalidateResponse
+      type: object
+    AnalysisContextSpec:
+      description: Selects baseline/pr context for a query.
+      properties:
+        mode:
+          $ref: '#/components/schemas/AnalysisMode'
+          default: baseline
+        context_id:
+          default: ''
+          title: Context Id
+          type: string
+        base_ref:
+          default: ''
+          title: Base Ref
+          type: string
+        head_ref:
+          default: ''
+          title: Head Ref
+          type: string
+        pr_id:
+          default: ''
+          title: Pr Id
+          type: string
+      title: AnalysisContextSpec
+      type: object
+    AnalysisMode:
+      description: Analysis context mode.
+      enum:
+      - baseline
+      - pr
+      title: AnalysisMode
+      type: string
+    CallGraphDirection:
+      description: Direction for call-graph queries.
+      enum:
+      - outgoing
+      - incoming
+      - both
+      title: CallGraphDirection
+      type: string
+    QueryScope:
+      description: Controls repo traversal scope for a query.
+      properties:
+        entry_repos:
+          items:
+            type: string
+          title: Entry Repos
+          type: array
+        max_repo_hops:
+          default: 2
+          maximum: 10
+          minimum: 0
+          title: Max Repo Hops
+          type: integer
+      title: QueryScope
+      type: object
+    RepoOverride:
+      description: Per-repo runtime override settings for query execution.
+      properties:
+        compile_commands:
+          default: ''
+          title: Compile Commands
+          type: string
+      title: RepoOverride
+      type: object
+    CallGraphRequest:
+      additionalProperties: false
+      description: Request body for /query/call-graph.
+      properties:
+        symbol:
+          description: Qualified function name
+          title: Symbol
+          type: string
+        workspace_id:
+          description: Workspace identifier
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        scope:
+          $ref: '#/components/schemas/QueryScope'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+        direction:
+          $ref: '#/components/schemas/CallGraphDirection'
+          default: both
+        max_depth:
+          default: 3
+          description: Max traversal depth
+          maximum: 10
+          minimum: 1
+          title: Max Depth
+          type: integer
+        max_recall_files:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Max Recall Files
+        max_parse_workers:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Max Parse Workers
+      required:
+      - symbol
+      - workspace_id
+      title: CallGraphRequest
+      type: object
+    CallEdgeResponse:
+      description: A single call edge in a call-graph response.
+      properties:
+        caller:
+          title: Caller
+          type: string
+        callee:
+          title: Callee
+          type: string
+        file_key:
+          title: File Key
+          type: string
+        line:
+          title: Line
+          type: integer
+        abs_path:
+          default: ''
+          title: Abs Path
+          type: string
+        context_id:
+          default: ''
+          title: Context Id
+          type: string
+      required:
+      - caller
+      - callee
+      - file_key
+      - line
+      title: CallEdgeResponse
+      type: object
+    ConfidenceEnvelope:
+      description: Communicates exactly how much of the codebase was semantically
+        verified.
+      properties:
+        verified_files:
+          items:
+            type: string
+          title: Verified Files
+          type: array
+        stale_files:
+          items:
+            type: string
+          title: Stale Files
+          type: array
+        unparsed_files:
+          items:
+            type: string
+          title: Unparsed Files
+          type: array
+        total_candidates:
+          default: 0
+          title: Total Candidates
+          type: integer
+        verified_ratio:
+          default: 0.0
+          title: Verified Ratio
+          type: number
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        overlay_mode:
+          $ref: '#/components/schemas/OverlayMode'
+          default: sparse
+        repo_coverage:
+          additionalProperties:
+            type: number
+          title: Repo Coverage
+          type: object
+      title: ConfidenceEnvelope
+      type: object
+    OverlayMode:
+      description: How overlay facts are materialized.
+      enum:
+      - full
+      - sparse
+      - partial_overlay
+      title: OverlayMode
+      type: string
+    CallGraphResponse:
+      description: Response for /query/call-graph.
+      properties:
+        symbol:
+          title: Symbol
+          type: string
+        edges:
+          items:
+            $ref: '#/components/schemas/CallEdgeResponse'
+          title: Edges
+          type: array
+        confidence:
+          $ref: '#/components/schemas/ConfidenceEnvelope'
+      required:
+      - symbol
+      - confidence
+      title: CallGraphResponse
+      type: object
+    ClassifyFreshnessRequest:
+      additionalProperties: false
+      description: Request body for /explore/classify-freshness.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+        candidate_file_keys:
+          items:
+            type: string
+          title: Candidate File Keys
+          type: array
+        max_files:
+          default: 200
+          maximum: 5000
+          minimum: 1
+          title: Max Files
+          type: integer
+      required:
+      - workspace_id
+      title: ClassifyFreshnessRequest
+      type: object
+    CompileMatchType:
+      description: How compile arguments were resolved for a file.
+      enum:
+      - exact
+      - fallback
+      - missing
+      title: CompileMatchType
+      type: string
+    CostEnvelope:
+      description: Bounded-cost accounting for an exploration primitive call.
+      properties:
+        requested:
+          additionalProperties:
+            type: integer
+          title: Requested
+          type: object
+        applied:
+          additionalProperties:
+            type: integer
+          title: Applied
+          type: object
+        consumed:
+          additionalProperties:
+            type: integer
+          title: Consumed
+          type: object
+        truncated:
+          default: false
+          title: Truncated
+          type: boolean
+        truncation_reasons:
+          items:
+            type: string
+          title: Truncation Reasons
+          type: array
+      title: CostEnvelope
+      type: object
+    CoverageEnvelope:
+      description: Coverage metadata for partial-result aware exploration flows.
+      properties:
+        total_candidates:
+          default: 0
+          title: Total Candidates
+          type: integer
+        considered_candidates:
+          default: 0
+          title: Considered Candidates
+          type: integer
+        verified_candidates:
+          default: 0
+          title: Verified Candidates
+          type: integer
+        partial:
+          default: false
+          title: Partial
+          type: boolean
+        partial_reasons:
+          items:
+            type: string
+          title: Partial Reasons
+          type: array
+      title: CoverageEnvelope
+      type: object
+    FreshnessParseTask:
+      description: Parse queue descriptor from classify-freshness.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        compile_match_type:
+          $ref: '#/components/schemas/CompileMatchType'
+        flags_hash:
+          default: ''
+          title: Flags Hash
+          type: string
+      required:
+      - file_key
+      - repo_id
+      - compile_match_type
+      title: FreshnessParseTask
+      type: object
+    ClassifyFreshnessResponse:
+      description: Response for /explore/classify-freshness.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        context_id:
+          title: Context Id
+          type: string
+        baseline_context_id:
+          title: Baseline Context Id
+          type: string
+        overlay_mode:
+          $ref: '#/components/schemas/OverlayMode'
+        fresh:
+          items:
+            type: string
+          title: Fresh
+          type: array
+        stale:
+          items:
+            type: string
+          title: Stale
+          type: array
+        unparsed:
+          items:
+            type: string
+          title: Unparsed
+          type: array
+        parse_queue:
+          items:
+            $ref: '#/components/schemas/FreshnessParseTask'
+          title: Parse Queue
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - workspace_id
+      - context_id
+      - baseline_context_id
+      - overlay_mode
+      title: ClassifyFreshnessResponse
+      type: object
+    CommitDiffSummaryRecord:
+      description: Stored summary record.
+      properties:
+        id:
+          title: Id
+          type: string
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        commit_sha:
+          title: Commit Sha
+          type: string
+        branch:
+          title: Branch
+          type: string
+        summary_text:
+          title: Summary Text
+          type: string
+        embedding_model:
+          title: Embedding Model
+          type: string
+        embedding_dim:
+          title: Embedding Dim
+          type: integer
+        metadata:
+          additionalProperties: true
+          title: Metadata
+          type: object
+        created_at:
+          title: Created At
+          type: string
+        updated_at:
+          title: Updated At
+          type: string
+        embedding:
+          items:
+            type: number
+          title: Embedding
+          type: array
+      required:
+      - id
+      - workspace_id
+      - repo_id
+      - commit_sha
+      - branch
+      - summary_text
+      - embedding_model
+      - embedding_dim
+      - created_at
+      - updated_at
+      title: CommitDiffSummaryRecord
+      type: object
+    CommitDiffSummaryGetResponse:
+      description: Fetch-by-key response.
+      properties:
+        found:
+          title: Found
+          type: boolean
+        record:
+          anyOf:
+          - $ref: '#/components/schemas/CommitDiffSummaryRecord'
+          - type: 'null'
+          default: null
+      required:
+      - found
+      title: CommitDiffSummaryGetResponse
+      type: object
+    CommitDiffSummarySearchRequest:
+      description: Top-k vector search over stored commit diff summaries.
+      properties:
+        query_embedding:
+          items:
+            type: number
+          title: Query Embedding
+          type: array
+        top_k:
+          default: 10
+          maximum: 100
+          minimum: 1
+          title: Top K
+          type: integer
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repo_ids:
+          items:
+            type: string
+          title: Repo Ids
+          type: array
+        branches:
+          items:
+            type: string
+          title: Branches
+          type: array
+        commit_sha_prefix:
+          default: ''
+          title: Commit Sha Prefix
+          type: string
+        created_after:
+          default: ''
+          title: Created After
+          type: string
+        score_threshold:
+          default: 0.0
+          title: Score Threshold
+          type: number
+      required:
+      - query_embedding
+      - workspace_id
+      title: CommitDiffSummarySearchRequest
+      type: object
+    CommitDiffSummaryHit:
+      description: Search hit entry.
+      properties:
+        id:
+          title: Id
+          type: string
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        commit_sha:
+          title: Commit Sha
+          type: string
+        branch:
+          title: Branch
+          type: string
+        summary_text:
+          title: Summary Text
+          type: string
+        embedding_model:
+          title: Embedding Model
+          type: string
+        metadata:
+          additionalProperties: true
+          title: Metadata
+          type: object
+        score:
+          title: Score
+          type: number
+        created_at:
+          title: Created At
+          type: string
+      required:
+      - id
+      - workspace_id
+      - repo_id
+      - commit_sha
+      - branch
+      - summary_text
+      - embedding_model
+      - score
+      - created_at
+      title: CommitDiffSummaryHit
+      type: object
+    CommitDiffSummarySearchResponse:
+      description: Search response envelope.
+      properties:
+        hits:
+          items:
+            $ref: '#/components/schemas/CommitDiffSummaryHit'
+          title: Hits
+          type: array
+      title: CommitDiffSummarySearchResponse
+      type: object
+    CommitDiffSummaryUpsertRequest:
+      description: Caller-provided merged commit diff summary and embedding.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        commit_sha:
+          title: Commit Sha
+          type: string
+        branch:
+          default: ''
+          title: Branch
+          type: string
+        summary_text:
+          title: Summary Text
+          type: string
+        embedding_model:
+          title: Embedding Model
+          type: string
+        embedding:
+          items:
+            type: number
+          title: Embedding
+          type: array
+        metadata:
+          additionalProperties: true
+          title: Metadata
+          type: object
+      required:
+      - workspace_id
+      - repo_id
+      - commit_sha
+      - summary_text
+      - embedding_model
+      - embedding
+      title: CommitDiffSummaryUpsertRequest
+      type: object
+    ContextCreateOverlayRequest:
+      description: Create a PR overlay context.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        pr_id:
+          title: Pr Id
+          type: string
+        base_ref:
+          default: ''
+          title: Base Ref
+          type: string
+        head_ref:
+          default: ''
+          title: Head Ref
+          type: string
+        context_id:
+          default: ''
+          title: Context Id
+          type: string
+      required:
+      - workspace_id
+      - pr_id
+      title: ContextCreateOverlayRequest
+      type: object
+    ContextCreateOverlayResponse:
+      description: Overlay context creation result.
+      properties:
+        context_id:
+          title: Context Id
+          type: string
+        workspace_id:
+          title: Workspace Id
+          type: string
+        base_context_id:
+          title: Base Context Id
+          type: string
+        overlay_mode:
+          $ref: '#/components/schemas/OverlayMode'
+        overlay_file_count:
+          default: 0
+          title: Overlay File Count
+          type: integer
+        overlay_row_count:
+          default: 0
+          title: Overlay Row Count
+          type: integer
+        partial_overlay:
+          default: false
+          title: Partial Overlay
+          type: boolean
+      required:
+      - context_id
+      - workspace_id
+      - base_context_id
+      - overlay_mode
+      title: ContextCreateOverlayResponse
+      type: object
+    ContextExpireResponse:
+      description: Overlay context expiry response.
+      properties:
+        context_id:
+          title: Context Id
+          type: string
+        expired:
+          title: Expired
+          type: boolean
+        message:
+          title: Message
+          type: string
+      required:
+      - context_id
+      - expired
+      - message
+      title: ContextExpireResponse
+      type: object
+    SymbolLocation:
+      description: A symbol definition location in a response.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        line:
+          title: Line
+          type: integer
+        col:
+          title: Col
+          type: integer
+        kind:
+          title: Kind
+          type: string
+        qualified_name:
+          default: ''
+          title: Qualified Name
+          type: string
+        extent_end_line:
+          default: 0
+          title: Extent End Line
+          type: integer
+        abs_path:
+          default: ''
+          title: Abs Path
+          type: string
+        context_id:
+          default: ''
+          title: Context Id
+          type: string
+      required:
+      - file_key
+      - line
+      - col
+      - kind
+      title: SymbolLocation
+      type: object
+    DefinitionResponse:
+      description: Response for /query/definition.
+      properties:
+        symbol:
+          title: Symbol
+          type: string
+        definitions:
+          items:
+            $ref: '#/components/schemas/SymbolLocation'
+          title: Definitions
+          type: array
+        confidence:
+          $ref: '#/components/schemas/ConfidenceEnvelope'
+      required:
+      - symbol
+      - confidence
+      title: DefinitionResponse
+      type: object
+    FetchCallEdgesRequest:
+      additionalProperties: false
+      description: Request body for /explore/fetch-call-edges.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        symbol:
+          title: Symbol
+          type: string
+        direction:
+          $ref: '#/components/schemas/CallGraphDirection'
+          default: both
+        candidate_file_keys:
+          items:
+            type: string
+          title: Candidate File Keys
+          type: array
+        excluded_file_keys:
+          items:
+            type: string
+          title: Excluded File Keys
+          type: array
+        limit:
+          default: 2000
+          maximum: 20000
+          minimum: 1
+          title: Limit
+          type: integer
+      required:
+      - workspace_id
+      - symbol
+      title: FetchCallEdgesRequest
+      type: object
+    EvidenceItem:
+      description: Evidence entry emitted by primitive exploration responses.
+      properties:
+        source:
+          title: Source
+          type: string
+        file_key:
+          default: ''
+          title: File Key
+          type: string
+        line:
+          default: 0
+          title: Line
+          type: integer
+        col:
+          default: 0
+          title: Col
+          type: integer
+        snippet:
+          default: ''
+          title: Snippet
+          type: string
+      required:
+      - source
+      title: EvidenceItem
+      type: object
+    FetchCallEdgesResponse:
+      description: Response for /explore/fetch-call-edges.
+      properties:
+        symbol:
+          title: Symbol
+          type: string
+        direction:
+          $ref: '#/components/schemas/CallGraphDirection'
+        edges:
+          items:
+            $ref: '#/components/schemas/CallEdgeResponse'
+          title: Edges
+          type: array
+        evidence:
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+          title: Evidence
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - symbol
+      - direction
+      title: FetchCallEdgesResponse
+      type: object
+    FetchReferencesRequest:
+      additionalProperties: false
+      description: Request body for /explore/fetch-references.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        symbol:
+          title: Symbol
+          type: string
+        candidate_file_keys:
+          items:
+            type: string
+          title: Candidate File Keys
+          type: array
+        excluded_file_keys:
+          items:
+            type: string
+          title: Excluded File Keys
+          type: array
+        limit:
+          default: 2000
+          maximum: 20000
+          minimum: 1
+          title: Limit
+          type: integer
+      required:
+      - workspace_id
+      - symbol
+      title: FetchReferencesRequest
+      type: object
+    ReferenceLocation:
+      description: A reference location in a response.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        line:
+          title: Line
+          type: integer
+        col:
+          title: Col
+          type: integer
+        kind:
+          default: unknown
+          title: Kind
+          type: string
+        abs_path:
+          default: ''
+          title: Abs Path
+          type: string
+        context_id:
+          default: ''
+          title: Context Id
+          type: string
+      required:
+      - file_key
+      - line
+      - col
+      title: ReferenceLocation
+      type: object
+    FetchReferencesResponse:
+      description: Response for /explore/fetch-references.
+      properties:
+        symbol:
+          title: Symbol
+          type: string
+        references:
+          items:
+            $ref: '#/components/schemas/ReferenceLocation'
+          title: References
+          type: array
+        evidence:
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+          title: Evidence
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - symbol
+      title: FetchReferencesResponse
+      type: object
+    FetchSymbolsRequest:
+      additionalProperties: false
+      description: Request body for /explore/fetch-symbols.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        symbol:
+          title: Symbol
+          type: string
+        candidate_file_keys:
+          items:
+            type: string
+          title: Candidate File Keys
+          type: array
+        excluded_file_keys:
+          items:
+            type: string
+          title: Excluded File Keys
+          type: array
+        limit:
+          default: 2000
+          maximum: 20000
+          minimum: 1
+          title: Limit
+          type: integer
+      required:
+      - workspace_id
+      - symbol
+      title: FetchSymbolsRequest
+      type: object
+    FetchSymbolsResponse:
+      description: Response for /explore/fetch-symbols.
+      properties:
+        symbol:
+          title: Symbol
+          type: string
+        symbols:
+          items:
+            $ref: '#/components/schemas/SymbolLocation'
+          title: Symbols
+          type: array
+        evidence:
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+          title: Evidence
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - symbol
+      title: FetchSymbolsResponse
+      type: object
+    FileSymbolsRequest:
+      additionalProperties: false
+      description: Request body for /query/file-symbols.
+      properties:
+        file_key:
+          description: 'Canonical file key: repo_id:rel/path.cpp'
+          title: File Key
+          type: string
+        workspace_id:
+          description: Workspace identifier
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+      required:
+      - file_key
+      - workspace_id
+      title: FileSymbolsRequest
+      type: object
+    FileSymbolsResponse:
+      description: Response for /query/file-symbols.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        symbols:
+          items:
+            $ref: '#/components/schemas/SymbolLocation'
+          title: Symbols
+          type: array
+        confidence:
+          $ref: '#/components/schemas/ConfidenceEnvelope'
+      required:
+      - file_key
+      - confidence
+      title: FileSymbolsResponse
+      type: object
+    GetCompileCommandRequest:
+      additionalProperties: false
+      description: Request body for /explore/get-compile-command.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        file_key:
+          title: File Key
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+      required:
+      - workspace_id
+      - file_key
+      title: GetCompileCommandRequest
+      type: object
+    GetCompileCommandResponse:
+      description: Response for /explore/get-compile-command.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        compile_db_path:
+          default: ''
+          title: Compile Db Path
+          type: string
+        match_type:
+          $ref: '#/components/schemas/CompileMatchType'
+          default: missing
+        cwd:
+          default: ''
+          title: Cwd
+          type: string
+        args:
+          items:
+            type: string
+          title: Args
+          type: array
+        flags_hash:
+          default: ''
+          title: Flags Hash
+          type: string
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+      required:
+      - file_key
+      title: GetCompileCommandResponse
+      type: object
+    GetConfidenceRequest:
+      additionalProperties: false
+      description: Request body for /explore/get-confidence.
+      properties:
+        verified_files:
+          items:
+            type: string
+          title: Verified Files
+          type: array
+        stale_files:
+          items:
+            type: string
+          title: Stale Files
+          type: array
+        unparsed_files:
+          items:
+            type: string
+          title: Unparsed Files
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        overlay_mode:
+          $ref: '#/components/schemas/OverlayMode'
+          default: sparse
+      title: GetConfidenceRequest
+      type: object
+    GetConfidenceResponse:
+      description: Response for /explore/get-confidence.
+      properties:
+        confidence:
+          $ref: '#/components/schemas/ConfidenceEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - confidence
+      title: GetConfidenceResponse
+      type: object
+    HealthResponse:
+      description: Response for /health.
+      properties:
+        status:
+          default: ok
+          title: Status
+          type: string
+        version:
+          title: Version
+          type: string
+        cache_file_count:
+          default: 0
+          title: Cache File Count
+          type: integer
+        cache_symbol_count:
+          default: 0
+          title: Cache Symbol Count
+          type: integer
+        rg_available:
+          default: false
+          title: Rg Available
+          type: boolean
+        rg_version:
+          default: ''
+          title: Rg Version
+          type: string
+        extractor_available:
+          default: false
+          title: Extractor Available
+          type: boolean
+        writer_queue_depth:
+          default: 0
+          title: Writer Queue Depth
+          type: integer
+        writer_lag_ms:
+          default: 0.0
+          title: Writer Lag Ms
+          type: number
+        active_context_count:
+          default: 0
+          title: Active Context Count
+          type: integer
+        overlay_disk_usage_bytes:
+          default: 0
+          title: Overlay Disk Usage Bytes
+          type: integer
+        index_queue_depth:
+          default: 0
+          title: Index Queue Depth
+          type: integer
+        oldest_pending_job_age_s:
+          default: 0.0
+          title: Oldest Pending Job Age S
+          type: number
+        sync_queue_depth:
+          default: 0
+          title: Sync Queue Depth
+          type: integer
+        active_sync_jobs:
+          default: 0
+          title: Active Sync Jobs
+          type: integer
+        last_sync_failure_count_1h:
+          default: 0
+          title: Last Sync Failure Count 1H
+          type: integer
+        sqlite_vec_loaded:
+          default: false
+          title: Sqlite Vec Loaded
+          type: boolean
+      required:
+      - version
+      title: HealthResponse
+      type: object
+    ListCandidatesRequest:
+      additionalProperties: false
+      description: Request body for /explore/list-candidates.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        symbol:
+          minLength: 1
+          title: Symbol
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        scope:
+          $ref: '#/components/schemas/QueryScope'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+        max_files:
+          default: 200
+          maximum: 5000
+          minimum: 1
+          title: Max Files
+          type: integer
+        include_rg:
+          default: true
+          title: Include Rg
+          type: boolean
+      required:
+      - workspace_id
+      - symbol
+      title: ListCandidatesRequest
+      type: object
+    CandidateProvenance:
+      description: Provenance summary for one merged candidate.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        sources:
+          items:
+            type: string
+          title: Sources
+          type: array
+      required:
+      - file_key
+      title: CandidateProvenance
+      type: object
+    ListCandidatesResponse:
+      description: Response for /explore/list-candidates.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        context_id:
+          title: Context Id
+          type: string
+        baseline_context_id:
+          title: Baseline Context Id
+          type: string
+        overlay_mode:
+          $ref: '#/components/schemas/OverlayMode'
+        symbol:
+          title: Symbol
+          type: string
+        candidates:
+          items:
+            type: string
+          title: Candidates
+          type: array
+        deleted_file_keys:
+          items:
+            type: string
+          title: Deleted File Keys
+          type: array
+        provenance:
+          items:
+            $ref: '#/components/schemas/CandidateProvenance'
+          title: Provenance
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - workspace_id
+      - context_id
+      - baseline_context_id
+      - overlay_mode
+      - symbol
+      title: ListCandidatesResponse
+      type: object
+    ParseFileRequest:
+      additionalProperties: false
+      description: Request body for /explore/parse-file.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+        file_keys:
+          items:
+            type: string
+          title: File Keys
+          type: array
+        max_parse_workers:
+          default: 1
+          maximum: 128
+          minimum: 1
+          title: Max Parse Workers
+          type: integer
+        timeout_s:
+          default: 120
+          maximum: 600
+          minimum: 1
+          title: Timeout S
+          type: integer
+        skip_if_fresh:
+          default: true
+          title: Skip If Fresh
+          type: boolean
+      required:
+      - workspace_id
+      title: ParseFileRequest
+      type: object
+    ParseFileResponse:
+      description: Response for /explore/parse-file.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        context_id:
+          title: Context Id
+          type: string
+        baseline_context_id:
+          title: Baseline Context Id
+          type: string
+        overlay_mode:
+          $ref: '#/components/schemas/OverlayMode'
+        parsed_file_keys:
+          items:
+            type: string
+          title: Parsed File Keys
+          type: array
+        failed_file_keys:
+          items:
+            type: string
+          title: Failed File Keys
+          type: array
+        skipped_fresh_file_keys:
+          items:
+            type: string
+          title: Skipped Fresh File Keys
+          type: array
+        unparsed_file_keys:
+          items:
+            type: string
+          title: Unparsed File Keys
+          type: array
+        parse_warnings:
+          items:
+            type: string
+          title: Parse Warnings
+          type: array
+        persisted_fact_rows:
+          default: 0
+          title: Persisted Fact Rows
+          type: integer
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      required:
+      - workspace_id
+      - context_id
+      - baseline_context_id
+      - overlay_mode
+      title: ParseFileResponse
+      type: object
+    ReadFileRequest:
+      additionalProperties: false
+      description: Request body for /explore/read-file.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        file_key:
+          title: File Key
+          type: string
+        start_line:
+          default: 1
+          minimum: 1
+          title: Start Line
+          type: integer
+        end_line:
+          default: 0
+          description: 0 means until EOF
+          minimum: 0
+          title: End Line
+          type: integer
+        max_bytes:
+          default: 65536
+          maximum: 2000000
+          minimum: 1
+          title: Max Bytes
+          type: integer
+      required:
+      - workspace_id
+      - file_key
+      title: ReadFileRequest
+      type: object
+    ReadFileResponse:
+      description: Response for /explore/read-file.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        abs_path:
+          default: ''
+          title: Abs Path
+          type: string
+        content:
+          default: ''
+          title: Content
+          type: string
+        truncated:
+          default: false
+          title: Truncated
+          type: boolean
+        line_range:
+          items:
+            type: integer
+          title: Line Range
+          type: array
+        content_hash:
+          default: ''
+          title: Content Hash
+          type: string
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+      required:
+      - file_key
+      title: ReadFileResponse
+      type: object
+    ReferencesResponse:
+      description: Response for /query/references.
+      properties:
+        symbol:
+          title: Symbol
+          type: string
+        definition:
+          anyOf:
+          - $ref: '#/components/schemas/SymbolLocation'
+          - type: 'null'
+          default: null
+        references:
+          items:
+            $ref: '#/components/schemas/ReferenceLocation'
+          title: References
+          type: array
+        confidence:
+          $ref: '#/components/schemas/ConfidenceEnvelope'
+      required:
+      - symbol
+      - confidence
+      title: ReferencesResponse
+      type: object
+    RepoSyncAllRequest:
+      description: Sync all sync-enabled repos declared in workspace manifest.
+      properties:
+        force_clean:
+          default: true
+          title: Force Clean
+          type: boolean
+      title: RepoSyncAllRequest
+      type: object
+    RepoSyncJobResponse:
+      description: Response describing sync job status.
+      properties:
+        job_id:
+          title: Job Id
+          type: string
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        requested_commit_sha:
+          title: Requested Commit Sha
+          type: string
+        requested_branch:
+          default: ''
+          title: Requested Branch
+          type: string
+        requested_force_clean:
+          default: true
+          title: Requested Force Clean
+          type: boolean
+        resolved_commit_sha:
+          default: ''
+          title: Resolved Commit Sha
+          type: string
+        status:
+          $ref: '#/components/schemas/RepoSyncJobStatus'
+        attempts:
+          default: 0
+          title: Attempts
+          type: integer
+        max_attempts:
+          default: 0
+          title: Max Attempts
+          type: integer
+        error_code:
+          default: ''
+          title: Error Code
+          type: string
+        error_message:
+          default: ''
+          title: Error Message
+          type: string
+        created_at:
+          default: ''
+          title: Created At
+          type: string
+        updated_at:
+          default: ''
+          title: Updated At
+          type: string
+        started_at:
+          default: ''
+          title: Started At
+          type: string
+        finished_at:
+          default: ''
+          title: Finished At
+          type: string
+      required:
+      - job_id
+      - workspace_id
+      - repo_id
+      - requested_commit_sha
+      - status
+      title: RepoSyncJobResponse
+      type: object
+    RepoSyncJobStatus:
+      description: Lifecycle state for a repo sync job.
+      enum:
+      - pending
+      - running
+      - done
+      - failed
+      - dead_letter
+      title: RepoSyncJobStatus
+      type: string
+    RepoSyncAllResponse:
+      description: Manifest-driven sync-all response.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        jobs:
+          items:
+            $ref: '#/components/schemas/RepoSyncJobResponse'
+          title: Jobs
+          type: array
+        skipped_repos:
+          items:
+            type: string
+          title: Skipped Repos
+          type: array
+      required:
+      - workspace_id
+      title: RepoSyncAllResponse
+      type: object
+    RepoSyncRequest:
+      description: Request for deterministic repo sync at exact commit SHA.
+      properties:
+        repo_id:
+          title: Repo Id
+          type: string
+        commit_sha:
+          title: Commit Sha
+          type: string
+        branch:
+          default: ''
+          title: Branch
+          type: string
+        force_clean:
+          default: true
+          title: Force Clean
+          type: boolean
+      required:
+      - repo_id
+      - commit_sha
+      title: RepoSyncRequest
+      type: object
+    RepoSyncBatchRequest:
+      description: Batch sync request for multiple repositories.
+      properties:
+        targets:
+          items:
+            $ref: '#/components/schemas/RepoSyncRequest'
+          minItems: 1
+          title: Targets
+          type: array
+      required:
+      - targets
+      title: RepoSyncBatchRequest
+      type: object
+    RepoSyncBatchResponse:
+      description: Batch enqueue result.
+      properties:
+        jobs:
+          items:
+            $ref: '#/components/schemas/RepoSyncJobResponse'
+          title: Jobs
+          type: array
+      title: RepoSyncBatchResponse
+      type: object
+    RepoSyncStatusResponse:
+      description: Latest sync status for a repository.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        last_synced_commit_sha:
+          default: ''
+          title: Last Synced Commit Sha
+          type: string
+        last_synced_branch:
+          default: ''
+          title: Last Synced Branch
+          type: string
+        last_success_at:
+          default: ''
+          title: Last Success At
+          type: string
+        last_failure_at:
+          default: ''
+          title: Last Failure At
+          type: string
+        last_error_code:
+          default: ''
+          title: Last Error Code
+          type: string
+        last_error_message:
+          default: ''
+          title: Last Error Message
+          type: string
+      required:
+      - workspace_id
+      - repo_id
+      title: RepoSyncStatusResponse
+      type: object
+    RgSearchMode:
+      description: Query mode for lexical recall.
+      enum:
+      - symbol
+      - regex
+      - literal
+      title: RgSearchMode
+      type: string
+    RgSearchRequest:
+      additionalProperties: false
+      description: Request body for /explore/rg-search.
+      properties:
+        workspace_id:
+          minLength: 1
+          title: Workspace Id
+          type: string
+        query:
+          minLength: 1
+          title: Query
+          type: string
+        mode:
+          $ref: '#/components/schemas/RgSearchMode'
+          default: symbol
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        scope:
+          $ref: '#/components/schemas/QueryScope'
+        max_hits:
+          default: 200
+          maximum: 2000
+          minimum: 1
+          title: Max Hits
+          type: integer
+        max_files:
+          default: 200
+          maximum: 2000
+          minimum: 1
+          title: Max Files
+          type: integer
+        timeout_s:
+          default: 30
+          maximum: 300
+          minimum: 1
+          title: Timeout S
+          type: integer
+        context_lines:
+          default: 0
+          maximum: 10
+          minimum: 0
+          title: Context Lines
+          type: integer
+      required:
+      - workspace_id
+      - query
+      title: RgSearchRequest
+      type: object
+    RgSearchHit:
+      description: Single rg hit mapped into canonical workspace identity.
+      properties:
+        file_key:
+          title: File Key
+          type: string
+        repo_id:
+          title: Repo Id
+          type: string
+        abs_path:
+          title: Abs Path
+          type: string
+        line:
+          title: Line
+          type: integer
+        line_text:
+          default: ''
+          title: Line Text
+          type: string
+      required:
+      - file_key
+      - repo_id
+      - abs_path
+      - line
+      title: RgSearchHit
+      type: object
+    RgSearchResponse:
+      description: Response for /explore/rg-search.
+      properties:
+        hits:
+          items:
+            $ref: '#/components/schemas/RgSearchHit'
+          title: Hits
+          type: array
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+        cost:
+          $ref: '#/components/schemas/CostEnvelope'
+        evidence:
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+          title: Evidence
+          type: array
+        coverage:
+          $ref: '#/components/schemas/CoverageEnvelope'
+      title: RgSearchResponse
+      type: object
+    SymbolQueryRequest:
+      additionalProperties: false
+      description: Request body for /query/references and /query/definition.
+      properties:
+        symbol:
+          description: Qualified or unqualified C++ symbol name
+          title: Symbol
+          type: string
+        workspace_id:
+          description: Workspace identifier
+          minLength: 1
+          title: Workspace Id
+          type: string
+        analysis_context:
+          $ref: '#/components/schemas/AnalysisContextSpec'
+        scope:
+          $ref: '#/components/schemas/QueryScope'
+        repo_overrides:
+          additionalProperties:
+            $ref: '#/components/schemas/RepoOverride'
+          title: Repo Overrides
+          type: object
+        max_recall_files:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          description: Override max candidate files from recall
+          title: Max Recall Files
+        max_parse_workers:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          description: Override max concurrent cpp-extractor processes
+          title: Max Parse Workers
+      required:
+      - symbol
+      - workspace_id
+      title: SymbolQueryRequest
+      type: object
+    WebhookGitLabRequest:
+      description: Generic GitLab webhook payload wrapper.
+      properties:
+        event_type:
+          title: Event Type
+          type: string
+        payload:
+          additionalProperties: true
+          title: Payload
+          type: object
+      required:
+      - event_type
+      title: WebhookGitLabRequest
+      type: object
+    WebhookGitLabResponse:
+      description: GitLab webhook ingestion response.
+      properties:
+        accepted:
+          title: Accepted
+          type: boolean
+        index_job_id:
+          default: ''
+          title: Index Job Id
+          type: string
+        sync_job_id:
+          default: ''
+          title: Sync Job Id
+          type: string
+        message:
+          default: ''
+          title: Message
+          type: string
+      required:
+      - accepted
+      title: WebhookGitLabResponse
+      type: object
+    WorkspaceInfoResponse:
+      description: Workspace details.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        root_path:
+          title: Root Path
+          type: string
+        manifest_path:
+          title: Manifest Path
+          type: string
+        repos:
+          items:
+            type: string
+          title: Repos
+          type: array
+        contexts:
+          items:
+            type: string
+          title: Contexts
+          type: array
+      required:
+      - workspace_id
+      - root_path
+      - manifest_path
+      title: WorkspaceInfoResponse
+      type: object
+    WorkspaceRefreshResponse:
+      description: Manifest refresh result.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        repos_synced:
+          title: Repos Synced
+          type: integer
+        message:
+          title: Message
+          type: string
+      required:
+      - workspace_id
+      - repos_synced
+      - message
+      title: WorkspaceRefreshResponse
+      type: object
+    WorkspaceRegisterRequest:
+      description: Register a workspace and its manifest path.
+      properties:
+        workspace_id:
+          title: Workspace Id
+          type: string
+        root_path:
+          title: Root Path
+          type: string
+        manifest_path:
+          default: ''
+          title: Manifest Path
+          type: string
+      required:
+      - workspace_id
+      - root_path
+      title: WorkspaceRegisterRequest
+      type: object

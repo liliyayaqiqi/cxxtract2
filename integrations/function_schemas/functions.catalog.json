@@ -1,0 +1,2463 @@
+{
+  "functions": [
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.query.references",
+        "description": "What this tool does: Resolve a symbol, refresh semantic facts as needed, and return references with confidence.\nWhen to use: Prefer this fast-track aggregated tool when the target symbol/function is already known and you want a direct answer in one round trip.\nWhen not to use: Avoid this when symbol identity is uncertain or you need explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*` tools instead.\nInput prerequisites: Known or plausible symbol string and workspace_id.\nExpected output: Returns references plus ConfidenceEnvelope. Response model: `ReferencesResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "symbol": {
+              "description": "Qualified or unqualified C++ symbol name",
+              "title": "Symbol",
+              "type": "string"
+            },
+            "workspace_id": {
+              "description": "Workspace identifier",
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            },
+            "max_recall_files": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Override max candidate files from recall",
+              "title": "Max Recall Files"
+            },
+            "max_parse_workers": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Override max concurrent cpp-extractor processes",
+              "title": "Max Parse Workers"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "aggregated",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "QueryScope": {
+              "description": "Controls repo traversal scope for a query.",
+              "properties": {
+                "entry_repos": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Entry Repos",
+                  "type": "array"
+                },
+                "max_repo_hops": {
+                  "default": 2,
+                  "maximum": 10,
+                  "minimum": 0,
+                  "title": "Max Repo Hops",
+                  "type": "integer"
+                }
+              },
+              "title": "QueryScope",
+              "type": "object"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /query/references and /query/definition."
+        }
+      },
+      "x-tool-class": "aggregated",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/query/references"
+      },
+      "x-expected-output": {
+        "model": "ReferencesResponse",
+        "$ref": "#/components/schemas/ReferencesResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.query.definition",
+        "description": "What this tool does: Resolve one or more symbol definitions in a single fast-track call.\nWhen to use: Prefer this fast-track aggregated tool when the target symbol/function is already known and you want a direct answer in one round trip.\nWhen not to use: Avoid this when symbol identity is uncertain or you need explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*` tools instead.\nInput prerequisites: Known or plausible symbol string and workspace_id.\nExpected output: Returns definitions plus ConfidenceEnvelope. Response model: `DefinitionResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "symbol": {
+              "description": "Qualified or unqualified C++ symbol name",
+              "title": "Symbol",
+              "type": "string"
+            },
+            "workspace_id": {
+              "description": "Workspace identifier",
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            },
+            "max_recall_files": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Override max candidate files from recall",
+              "title": "Max Recall Files"
+            },
+            "max_parse_workers": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Override max concurrent cpp-extractor processes",
+              "title": "Max Parse Workers"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "aggregated",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "QueryScope": {
+              "description": "Controls repo traversal scope for a query.",
+              "properties": {
+                "entry_repos": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Entry Repos",
+                  "type": "array"
+                },
+                "max_repo_hops": {
+                  "default": 2,
+                  "maximum": 10,
+                  "minimum": 0,
+                  "title": "Max Repo Hops",
+                  "type": "integer"
+                }
+              },
+              "title": "QueryScope",
+              "type": "object"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /query/references and /query/definition."
+        }
+      },
+      "x-tool-class": "aggregated",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/query/definition"
+      },
+      "x-expected-output": {
+        "model": "DefinitionResponse",
+        "$ref": "#/components/schemas/DefinitionResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.query.call_graph",
+        "description": "What this tool does: Return call edges around a function symbol with one-shot orchestration.\nWhen to use: Prefer this fast-track aggregated tool when the target symbol/function is already known and you want a direct answer in one round trip.\nWhen not to use: Avoid this when symbol identity is uncertain or you need explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*` tools instead.\nInput prerequisites: Qualified function symbol and workspace_id.\nExpected output: Returns edges plus ConfidenceEnvelope. Response model: `CallGraphResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "symbol": {
+              "description": "Qualified function name",
+              "title": "Symbol",
+              "type": "string"
+            },
+            "workspace_id": {
+              "description": "Workspace identifier",
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            },
+            "direction": {
+              "$ref": "#/$defs/CallGraphDirection",
+              "default": "both"
+            },
+            "max_depth": {
+              "default": 3,
+              "description": "Max traversal depth",
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Max Depth",
+              "type": "integer"
+            },
+            "max_recall_files": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Recall Files"
+            },
+            "max_parse_workers": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Parse Workers"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "aggregated",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "CallGraphDirection": {
+              "description": "Direction for call-graph queries.",
+              "enum": [
+                "outgoing",
+                "incoming",
+                "both"
+              ],
+              "title": "CallGraphDirection",
+              "type": "string"
+            },
+            "QueryScope": {
+              "description": "Controls repo traversal scope for a query.",
+              "properties": {
+                "entry_repos": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Entry Repos",
+                  "type": "array"
+                },
+                "max_repo_hops": {
+                  "default": 2,
+                  "maximum": 10,
+                  "minimum": 0,
+                  "title": "Max Repo Hops",
+                  "type": "integer"
+                }
+              },
+              "title": "QueryScope",
+              "type": "object"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /query/call-graph."
+        }
+      },
+      "x-tool-class": "aggregated",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/query/call-graph"
+      },
+      "x-expected-output": {
+        "model": "CallGraphResponse",
+        "$ref": "#/components/schemas/CallGraphResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.query.file_symbols",
+        "description": "What this tool does: Return symbols for one canonical file key.\nWhen to use: Prefer this fast-track aggregated tool when the target symbol/function is already known and you want a direct answer in one round trip.\nWhen not to use: Avoid this when symbol identity is uncertain or you need explicit stepwise evidence and bounded intermediate costs; use `cxxtract.explore.*` tools instead.\nInput prerequisites: workspace_id and canonical file_key (repo_id:rel/path).\nExpected output: Returns file symbols plus ConfidenceEnvelope. Response model: `FileSymbolsResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "file_key": {
+              "description": "Canonical file key: repo_id:rel/path.cpp",
+              "title": "File Key",
+              "type": "string"
+            },
+            "workspace_id": {
+              "description": "Workspace identifier",
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            }
+          },
+          "required": [
+            "file_key",
+            "workspace_id"
+          ],
+          "x-tool-class": "aggregated",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /query/file-symbols."
+        }
+      },
+      "x-tool-class": "aggregated",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/query/file-symbols"
+      },
+      "x-expected-output": {
+        "model": "FileSymbolsResponse",
+        "$ref": "#/components/schemas/FileSymbolsResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.rg_search",
+        "description": "What this tool does: Run bounded lexical recall with evidence for candidate discovery.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and query string.\nExpected output: Returns hits, EvidenceItem[], CostEnvelope, CoverageEnvelope. Response model: `RgSearchResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "query": {
+              "minLength": 1,
+              "title": "Query",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/RgSearchMode",
+              "default": "symbol"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "max_hits": {
+              "default": 200,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Max Hits",
+              "type": "integer"
+            },
+            "max_files": {
+              "default": 200,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Max Files",
+              "type": "integer"
+            },
+            "timeout_s": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 1,
+              "title": "Timeout S",
+              "type": "integer"
+            },
+            "context_lines": {
+              "default": 0,
+              "maximum": 10,
+              "minimum": 0,
+              "title": "Context Lines",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "QueryScope": {
+              "description": "Controls repo traversal scope for a query.",
+              "properties": {
+                "entry_repos": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Entry Repos",
+                  "type": "array"
+                },
+                "max_repo_hops": {
+                  "default": 2,
+                  "maximum": 10,
+                  "minimum": 0,
+                  "title": "Max Repo Hops",
+                  "type": "integer"
+                }
+              },
+              "title": "QueryScope",
+              "type": "object"
+            },
+            "RgSearchMode": {
+              "description": "Query mode for lexical recall.",
+              "enum": [
+                "symbol",
+                "regex",
+                "literal"
+              ],
+              "title": "RgSearchMode",
+              "type": "string"
+            }
+          },
+          "description": "Request body for /explore/rg-search."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/rg-search"
+      },
+      "x-expected-output": {
+        "model": "RgSearchResponse",
+        "$ref": "#/components/schemas/RgSearchResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.read_file",
+        "description": "What this tool does: Read a bounded line/byte slice from one canonical file key.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and canonical file_key.\nExpected output: Returns content slice, truncation signal, CostEnvelope. Response model: `ReadFileResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "file_key": {
+              "title": "File Key",
+              "type": "string"
+            },
+            "start_line": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Start Line",
+              "type": "integer"
+            },
+            "end_line": {
+              "default": 0,
+              "description": "0 means until EOF",
+              "minimum": 0,
+              "title": "End Line",
+              "type": "integer"
+            },
+            "max_bytes": {
+              "default": 65536,
+              "maximum": 2000000,
+              "minimum": 1,
+              "title": "Max Bytes",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "file_key",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "description": "Request body for /explore/read-file."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/read-file"
+      },
+      "x-expected-output": {
+        "model": "ReadFileResponse",
+        "$ref": "#/components/schemas/ReadFileResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.get_compile_command",
+        "description": "What this tool does: Inspect the effective compile command and flags hash for semantic trust checks.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and canonical file_key.\nExpected output: Returns compile match_type, cwd, args, flags_hash. Response model: `GetCompileCommandResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "file_key": {
+              "title": "File Key",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            }
+          },
+          "required": [
+            "file_key",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /explore/get-compile-command."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/get-compile-command"
+      },
+      "x-expected-output": {
+        "model": "GetCompileCommandResponse",
+        "$ref": "#/components/schemas/GetCompileCommandResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.list_candidates",
+        "description": "What this tool does: Generate merged candidate file keys with provenance and truncation metadata.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and target symbol.\nExpected output: Returns candidates, provenance, CostEnvelope, CoverageEnvelope. Response model: `ListCandidatesResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "symbol": {
+              "minLength": 1,
+              "title": "Symbol",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            },
+            "max_files": {
+              "default": 200,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Max Files",
+              "type": "integer"
+            },
+            "include_rg": {
+              "default": true,
+              "title": "Include Rg",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "QueryScope": {
+              "description": "Controls repo traversal scope for a query.",
+              "properties": {
+                "entry_repos": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Entry Repos",
+                  "type": "array"
+                },
+                "max_repo_hops": {
+                  "default": 2,
+                  "maximum": 10,
+                  "minimum": 0,
+                  "title": "Max Repo Hops",
+                  "type": "integer"
+                }
+              },
+              "title": "QueryScope",
+              "type": "object"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /explore/list-candidates."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/list-candidates"
+      },
+      "x-expected-output": {
+        "model": "ListCandidatesResponse",
+        "$ref": "#/components/schemas/ListCandidatesResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.classify_freshness",
+        "description": "What this tool does: Classify candidate files into fresh/stale/unparsed and emit parse queue descriptors.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and candidate_file_keys.\nExpected output: Returns freshness buckets, parse_queue, CostEnvelope, CoverageEnvelope. Response model: `ClassifyFreshnessResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            },
+            "candidate_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Candidate File Keys",
+              "type": "array"
+            },
+            "max_files": {
+              "default": 200,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Max Files",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /explore/classify-freshness."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/classify-freshness"
+      },
+      "x-expected-output": {
+        "model": "ClassifyFreshnessResponse",
+        "$ref": "#/components/schemas/ClassifyFreshnessResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.parse_file",
+        "description": "What this tool does: Run on-demand semantic parsing and persist facts through single-writer pipeline.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and file_keys selected for parsing.\nExpected output: Returns parsed/failed/skipped lists, persisted_fact_rows, CostEnvelope, CoverageEnvelope. Response model: `ParseFileResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "repo_overrides": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RepoOverride"
+              },
+              "title": "Repo Overrides",
+              "type": "object"
+            },
+            "file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "File Keys",
+              "type": "array"
+            },
+            "max_parse_workers": {
+              "default": 1,
+              "maximum": 128,
+              "minimum": 1,
+              "title": "Max Parse Workers",
+              "type": "integer"
+            },
+            "timeout_s": {
+              "default": 120,
+              "maximum": 600,
+              "minimum": 1,
+              "title": "Timeout S",
+              "type": "integer"
+            },
+            "skip_if_fresh": {
+              "default": true,
+              "title": "Skip If Fresh",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": true,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "RepoOverride": {
+              "description": "Per-repo runtime override settings for query execution.",
+              "properties": {
+                "compile_commands": {
+                  "default": "",
+                  "title": "Compile Commands",
+                  "type": "string"
+                }
+              },
+              "title": "RepoOverride",
+              "type": "object"
+            }
+          },
+          "description": "Request body for /explore/parse-file."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/parse-file"
+      },
+      "x-expected-output": {
+        "model": "ParseFileResponse",
+        "$ref": "#/components/schemas/ParseFileResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.fetch_symbols",
+        "description": "What this tool does: Fetch semantic symbol rows from cache for explicit candidate sets.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and target symbol; candidate_file_keys optional but recommended.\nExpected output: Returns symbol rows with evidence and Cost/Coverage envelopes. Response model: `FetchSymbolsResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "symbol": {
+              "title": "Symbol",
+              "type": "string"
+            },
+            "candidate_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Candidate File Keys",
+              "type": "array"
+            },
+            "excluded_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Excluded File Keys",
+              "type": "array"
+            },
+            "limit": {
+              "default": 2000,
+              "maximum": 20000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            }
+          },
+          "description": "Request body for /explore/fetch-symbols."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/fetch-symbols"
+      },
+      "x-expected-output": {
+        "model": "FetchSymbolsResponse",
+        "$ref": "#/components/schemas/FetchSymbolsResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.fetch_references",
+        "description": "What this tool does: Fetch semantic reference rows from cache for explicit candidate sets.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id and target symbol; candidate_file_keys optional but recommended.\nExpected output: Returns references with evidence and Cost/Coverage envelopes. Response model: `FetchReferencesResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "symbol": {
+              "title": "Symbol",
+              "type": "string"
+            },
+            "candidate_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Candidate File Keys",
+              "type": "array"
+            },
+            "excluded_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Excluded File Keys",
+              "type": "array"
+            },
+            "limit": {
+              "default": 2000,
+              "maximum": 20000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            }
+          },
+          "description": "Request body for /explore/fetch-references."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/fetch-references"
+      },
+      "x-expected-output": {
+        "model": "FetchReferencesResponse",
+        "$ref": "#/components/schemas/FetchReferencesResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.fetch_call_edges",
+        "description": "What this tool does: Fetch call edges for explicit symbols and direction from semantic cache.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: workspace_id, symbol, direction, and candidate_file_keys for high precision.\nExpected output: Returns call edges with evidence and Cost/Coverage envelopes. Response model: `FetchCallEdgesResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "analysis_context": {
+              "$ref": "#/$defs/AnalysisContextSpec"
+            },
+            "symbol": {
+              "title": "Symbol",
+              "type": "string"
+            },
+            "direction": {
+              "$ref": "#/$defs/CallGraphDirection",
+              "default": "both"
+            },
+            "candidate_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Candidate File Keys",
+              "type": "array"
+            },
+            "excluded_file_keys": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Excluded File Keys",
+              "type": "array"
+            },
+            "limit": {
+              "default": 2000,
+              "maximum": 20000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "symbol",
+            "workspace_id"
+          ],
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "AnalysisContextSpec": {
+              "description": "Selects baseline/pr context for a query.",
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/AnalysisMode",
+                  "default": "baseline"
+                },
+                "context_id": {
+                  "default": "",
+                  "title": "Context Id",
+                  "type": "string"
+                },
+                "base_ref": {
+                  "default": "",
+                  "title": "Base Ref",
+                  "type": "string"
+                },
+                "head_ref": {
+                  "default": "",
+                  "title": "Head Ref",
+                  "type": "string"
+                },
+                "pr_id": {
+                  "default": "",
+                  "title": "Pr Id",
+                  "type": "string"
+                }
+              },
+              "title": "AnalysisContextSpec",
+              "type": "object"
+            },
+            "AnalysisMode": {
+              "description": "Analysis context mode.",
+              "enum": [
+                "baseline",
+                "pr"
+              ],
+              "title": "AnalysisMode",
+              "type": "string"
+            },
+            "CallGraphDirection": {
+              "description": "Direction for call-graph queries.",
+              "enum": [
+                "outgoing",
+                "incoming",
+                "both"
+              ],
+              "title": "CallGraphDirection",
+              "type": "string"
+            }
+          },
+          "description": "Request body for /explore/fetch-call-edges."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/fetch-call-edges"
+      },
+      "x-expected-output": {
+        "model": "FetchCallEdgesResponse",
+        "$ref": "#/components/schemas/FetchCallEdgesResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.explore.get_confidence",
+        "description": "What this tool does: Compute ConfidenceEnvelope from explicit verified/stale/unparsed file sets.\nWhen to use: Use this atomic tool in iterative exploration chains to control recall, freshness, parsing, and semantic verification step-by-step with explicit evidence and bounded Cost/Coverage envelopes.\nWhen not to use: Avoid this for simple known-symbol lookups where a `cxxtract.query.*` fast-track tool can answer directly with lower orchestration overhead.\nInput prerequisites: Provide verification sets from prior exploration steps.\nExpected output: Returns ConfidenceEnvelope and CoverageEnvelope. Response model: `GetConfidenceResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "verified_files": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Verified Files",
+              "type": "array"
+            },
+            "stale_files": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Stale Files",
+              "type": "array"
+            },
+            "unparsed_files": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Unparsed Files",
+              "type": "array"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "overlay_mode": {
+              "$ref": "#/$defs/OverlayMode",
+              "default": "sparse"
+            }
+          },
+          "x-tool-class": "atomic",
+          "x-side-effectful": false,
+          "$defs": {
+            "OverlayMode": {
+              "description": "How overlay facts are materialized.",
+              "enum": [
+                "full",
+                "sparse",
+                "partial_overlay"
+              ],
+              "title": "OverlayMode",
+              "type": "string"
+            }
+          },
+          "description": "Request body for /explore/get-confidence."
+        }
+      },
+      "x-tool-class": "atomic",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/explore/get-confidence"
+      },
+      "x-expected-output": {
+        "model": "GetConfidenceResponse",
+        "$ref": "#/components/schemas/GetConfidenceResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.cache.invalidate",
+        "description": "What this tool does: Invalidate cached semantic facts for one context or a selected file set.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id and optional context_id/file_keys.\nExpected output: Returns invalidated_files count and status message. Response model: `CacheInvalidateResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "description": "Workspace identifier",
+              "minLength": 1,
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "context_id": {
+              "default": "",
+              "description": "Context ID. Empty means active baseline.",
+              "title": "Context Id",
+              "type": "string"
+            },
+            "file_keys": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Specific canonical file keys to invalidate. If None, clear the context cache.",
+              "title": "File Keys"
+            }
+          },
+          "required": [
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Request body for /cache/invalidate."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/cache/invalidate"
+      },
+      "x-expected-output": {
+        "model": "CacheInvalidateResponse",
+        "$ref": "#/components/schemas/CacheInvalidateResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.workspace.register",
+        "description": "What this tool does: Register or refresh workspace manifest binding for API operations.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id, root_path, and manifest_path.\nExpected output: Returns workspace metadata and known contexts. Response model: `WorkspaceInfoResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "root_path": {
+              "title": "Root Path",
+              "type": "string"
+            },
+            "manifest_path": {
+              "default": "",
+              "title": "Manifest Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "root_path",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Register a workspace and its manifest path."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/workspace/register"
+      },
+      "x-expected-output": {
+        "model": "WorkspaceInfoResponse",
+        "$ref": "#/components/schemas/WorkspaceInfoResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.workspace.get",
+        "description": "What this tool does: Read workspace metadata, repos, and active contexts.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id path parameter.\nExpected output: Returns WorkspaceInfoResponse. Response model: `WorkspaceInfoResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            }
+          },
+          "required": [
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": false
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "GET",
+        "path": "/workspace/{workspace_id}"
+      },
+      "x-expected-output": {
+        "model": "WorkspaceInfoResponse",
+        "$ref": "#/components/schemas/WorkspaceInfoResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.workspace.refresh_manifest",
+        "description": "What this tool does: Reload workspace manifest from disk and refresh repo mapping.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id path parameter.\nExpected output: Returns repos_synced count and message. Response model: `WorkspaceRefreshResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            }
+          },
+          "required": [
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/workspace/{workspace_id}/refresh-manifest"
+      },
+      "x-expected-output": {
+        "model": "WorkspaceRefreshResponse",
+        "$ref": "#/components/schemas/WorkspaceRefreshResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.context.create_pr_overlay",
+        "description": "What this tool does: Create a PR overlay context on top of a baseline for sparse review workflows.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id and PR/base/head identifiers.\nExpected output: Returns new context_id and overlay mode stats. Response model: `ContextCreateOverlayResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "pr_id": {
+              "title": "Pr Id",
+              "type": "string"
+            },
+            "base_ref": {
+              "default": "",
+              "title": "Base Ref",
+              "type": "string"
+            },
+            "head_ref": {
+              "default": "",
+              "title": "Head Ref",
+              "type": "string"
+            },
+            "context_id": {
+              "default": "",
+              "title": "Context Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pr_id",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Create a PR overlay context."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/context/create-pr-overlay"
+      },
+      "x-expected-output": {
+        "model": "ContextCreateOverlayResponse",
+        "$ref": "#/components/schemas/ContextCreateOverlayResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.context.expire",
+        "description": "What this tool does: Expire an overlay context and release associated resources.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: context_id path parameter.\nExpected output: Returns expired boolean and message. Response model: `ContextExpireResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "context_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "context_id path/query parameter."
+            }
+          },
+          "required": [
+            "context_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/context/{context_id}/expire"
+      },
+      "x-expected-output": {
+        "model": "ContextExpireResponse",
+        "$ref": "#/components/schemas/ContextExpireResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.webhook.gitlab",
+        "description": "What this tool does: Ingest GitLab webhook payloads and enqueue downstream sync/index work.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: event_type and payload with workspace/repo identifiers.\nExpected output: Returns accepted flag and optional job ids. Response model: `WebhookGitLabResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "event_type": {
+              "title": "Event Type",
+              "type": "string"
+            },
+            "payload": {
+              "additionalProperties": true,
+              "title": "Payload",
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_type"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Generic GitLab webhook payload wrapper."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/webhooks/gitlab"
+      },
+      "x-expected-output": {
+        "model": "WebhookGitLabResponse",
+        "$ref": "#/components/schemas/WebhookGitLabResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.sync.repo",
+        "description": "What this tool does: Enqueue deterministic sync for one repo at exact commit SHA.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id path parameter and repo sync request body.\nExpected output: Returns RepoSyncJobResponse. Response model: `RepoSyncJobResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            },
+            "repo_id": {
+              "title": "Repo Id",
+              "type": "string"
+            },
+            "commit_sha": {
+              "title": "Commit Sha",
+              "type": "string"
+            },
+            "branch": {
+              "default": "",
+              "title": "Branch",
+              "type": "string"
+            },
+            "force_clean": {
+              "default": true,
+              "title": "Force Clean",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "commit_sha",
+            "repo_id",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Request for deterministic repo sync at exact commit SHA."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/workspace/{workspace_id}/sync-repo"
+      },
+      "x-expected-output": {
+        "model": "RepoSyncJobResponse",
+        "$ref": "#/components/schemas/RepoSyncJobResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.sync.batch",
+        "description": "What this tool does: Enqueue sync jobs for multiple repos in one request.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id path parameter and targets list.\nExpected output: Returns list of created sync jobs. Response model: `RepoSyncBatchResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            },
+            "targets": {
+              "items": {
+                "$ref": "#/$defs/RepoSyncRequest"
+              },
+              "minItems": 1,
+              "title": "Targets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "targets",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "$defs": {
+            "RepoSyncRequest": {
+              "description": "Request for deterministic repo sync at exact commit SHA.",
+              "properties": {
+                "repo_id": {
+                  "title": "Repo Id",
+                  "type": "string"
+                },
+                "commit_sha": {
+                  "title": "Commit Sha",
+                  "type": "string"
+                },
+                "branch": {
+                  "default": "",
+                  "title": "Branch",
+                  "type": "string"
+                },
+                "force_clean": {
+                  "default": true,
+                  "title": "Force Clean",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "repo_id",
+                "commit_sha"
+              ],
+              "title": "RepoSyncRequest",
+              "type": "object"
+            }
+          },
+          "description": "Batch sync request for multiple repositories."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/workspace/{workspace_id}/sync-batch"
+      },
+      "x-expected-output": {
+        "model": "RepoSyncBatchResponse",
+        "$ref": "#/components/schemas/RepoSyncBatchResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.sync.all_repos",
+        "description": "What this tool does: Enqueue sync jobs for all sync-enabled repos in manifest.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id path parameter.\nExpected output: Returns jobs list and skipped repos. Response model: `RepoSyncAllResponse`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            },
+            "force_clean": {
+              "default": true,
+              "title": "Force Clean",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Sync all sync-enabled repos declared in workspace manifest."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/workspace/{workspace_id}/sync-all-repos"
+      },
+      "x-expected-output": {
+        "model": "RepoSyncAllResponse",
+        "$ref": "#/components/schemas/RepoSyncAllResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.sync.job_get",
+        "description": "What this tool does: Read sync job status and diagnostic fields.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: job_id path parameter.\nExpected output: Returns RepoSyncJobResponse. Response model: `RepoSyncJobResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "job_id path/query parameter."
+            }
+          },
+          "required": [
+            "job_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": false
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "GET",
+        "path": "/sync-jobs/{job_id}"
+      },
+      "x-expected-output": {
+        "model": "RepoSyncJobResponse",
+        "$ref": "#/components/schemas/RepoSyncJobResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.sync.status",
+        "description": "What this tool does: Read latest sync status snapshot for one repository.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id and repo_id path parameters.\nExpected output: Returns RepoSyncStatusResponse. Response model: `RepoSyncStatusResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            },
+            "repo_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "repo_id path/query parameter."
+            }
+          },
+          "required": [
+            "repo_id",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": false
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "GET",
+        "path": "/workspace/{workspace_id}/repos/{repo_id}/sync-status"
+      },
+      "x-expected-output": {
+        "model": "RepoSyncStatusResponse",
+        "$ref": "#/components/schemas/RepoSyncStatusResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.vector.upsert",
+        "description": "What this tool does: Store or update commit diff summary and embedding vector.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace/repo/commit identifiers, summary text, embedding payload.\nExpected output: Returns stored CommitDiffSummaryRecord. Response model: `CommitDiffSummaryRecord`.\nSide effects: This tool mutates service/workspace state. Call only with explicit intent and include clear rationale in your plan.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "repo_id": {
+              "title": "Repo Id",
+              "type": "string"
+            },
+            "commit_sha": {
+              "title": "Commit Sha",
+              "type": "string"
+            },
+            "branch": {
+              "default": "",
+              "title": "Branch",
+              "type": "string"
+            },
+            "summary_text": {
+              "title": "Summary Text",
+              "type": "string"
+            },
+            "embedding_model": {
+              "title": "Embedding Model",
+              "type": "string"
+            },
+            "embedding": {
+              "items": {
+                "type": "number"
+              },
+              "title": "Embedding",
+              "type": "array"
+            },
+            "metadata": {
+              "additionalProperties": true,
+              "title": "Metadata",
+              "type": "object"
+            }
+          },
+          "required": [
+            "commit_sha",
+            "embedding",
+            "embedding_model",
+            "repo_id",
+            "summary_text",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": true,
+          "description": "Caller-provided merged commit diff summary and embedding."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": true,
+      "x-http": {
+        "method": "POST",
+        "path": "/commit-diff-summaries/upsert"
+      },
+      "x-expected-output": {
+        "model": "CommitDiffSummaryRecord",
+        "$ref": "#/components/schemas/CommitDiffSummaryRecord"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.vector.search",
+        "description": "What this tool does: Run top-k vector search over commit summary embeddings.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: query_embedding and workspace scope.\nExpected output: Returns ranked commit summary hits. Response model: `CommitDiffSummarySearchResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "query_embedding": {
+              "items": {
+                "type": "number"
+              },
+              "title": "Query Embedding",
+              "type": "array"
+            },
+            "top_k": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            },
+            "workspace_id": {
+              "title": "Workspace Id",
+              "type": "string"
+            },
+            "repo_ids": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Repo Ids",
+              "type": "array"
+            },
+            "branches": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Branches",
+              "type": "array"
+            },
+            "commit_sha_prefix": {
+              "default": "",
+              "title": "Commit Sha Prefix",
+              "type": "string"
+            },
+            "created_after": {
+              "default": "",
+              "title": "Created After",
+              "type": "string"
+            },
+            "score_threshold": {
+              "default": 0.0,
+              "title": "Score Threshold",
+              "type": "number"
+            }
+          },
+          "required": [
+            "query_embedding",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": false,
+          "description": "Top-k vector search over stored commit diff summaries."
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "POST",
+        "path": "/commit-diff-summaries/search"
+      },
+      "x-expected-output": {
+        "model": "CommitDiffSummarySearchResponse",
+        "$ref": "#/components/schemas/CommitDiffSummarySearchResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.vector.get",
+        "description": "What this tool does: Fetch one commit diff summary record by composite key.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: workspace_id, repo_id, commit_sha path parameters.\nExpected output: Returns found flag and optional record. Response model: `CommitDiffSummaryGetResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "workspace_id path/query parameter."
+            },
+            "repo_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "repo_id path/query parameter."
+            },
+            "commit_sha": {
+              "type": "string",
+              "minLength": 1,
+              "description": "commit_sha path/query parameter."
+            },
+            "include_embedding": {
+              "type": "boolean",
+              "default": false,
+              "description": "Include embedding values in vector.get response when true."
+            }
+          },
+          "required": [
+            "commit_sha",
+            "repo_id",
+            "workspace_id"
+          ],
+          "x-tool-class": "operational",
+          "x-side-effectful": false
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "GET",
+        "path": "/commit-diff-summaries/{workspace_id}/{repo_id}/{commit_sha}"
+      },
+      "x-expected-output": {
+        "model": "CommitDiffSummaryGetResponse",
+        "$ref": "#/components/schemas/CommitDiffSummaryGetResponse"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cxxtract.health.get",
+        "description": "What this tool does: Read service health, queue depths, tool availability, and vector status.\nWhen to use: Use this operational tool only when workspace/context/cache/sync/vector state actions are explicitly intended by the task.\nWhen not to use: Avoid for pure read-only semantic analysis unless this exact operational state/control operation is required.\nInput prerequisites: No inputs.\nExpected output: Returns HealthResponse counters and availability flags. Response model: `HealthResponse`.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {},
+          "x-tool-class": "operational",
+          "x-side-effectful": false
+        }
+      },
+      "x-tool-class": "operational",
+      "x-side-effectful": false,
+      "x-http": {
+        "method": "GET",
+        "path": "/health"
+      },
+      "x-expected-output": {
+        "model": "HealthResponse",
+        "$ref": "#/components/schemas/HealthResponse"
+      }
+    }
+  ]
+}

@@ -1,0 +1,2618 @@
+{
+  "CacheInvalidateRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /cache/invalidate.",
+    "properties": {
+      "workspace_id": {
+        "description": "Workspace identifier",
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "context_id": {
+        "default": "",
+        "description": "Context ID. Empty means active baseline.",
+        "title": "Context Id",
+        "type": "string"
+      },
+      "file_keys": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Specific canonical file keys to invalidate. If None, clear the context cache.",
+        "title": "File Keys"
+      }
+    },
+    "required": [
+      "workspace_id"
+    ],
+    "title": "CacheInvalidateRequest",
+    "type": "object"
+  },
+  "CacheInvalidateResponse": {
+    "description": "Response for /cache/invalidate.",
+    "properties": {
+      "invalidated_files": {
+        "title": "Invalidated Files",
+        "type": "integer"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "invalidated_files",
+      "message"
+    ],
+    "title": "CacheInvalidateResponse",
+    "type": "object"
+  },
+  "AnalysisContextSpec": {
+    "description": "Selects baseline/pr context for a query.",
+    "properties": {
+      "mode": {
+        "$ref": "#/components/schemas/AnalysisMode",
+        "default": "baseline"
+      },
+      "context_id": {
+        "default": "",
+        "title": "Context Id",
+        "type": "string"
+      },
+      "base_ref": {
+        "default": "",
+        "title": "Base Ref",
+        "type": "string"
+      },
+      "head_ref": {
+        "default": "",
+        "title": "Head Ref",
+        "type": "string"
+      },
+      "pr_id": {
+        "default": "",
+        "title": "Pr Id",
+        "type": "string"
+      }
+    },
+    "title": "AnalysisContextSpec",
+    "type": "object"
+  },
+  "AnalysisMode": {
+    "description": "Analysis context mode.",
+    "enum": [
+      "baseline",
+      "pr"
+    ],
+    "title": "AnalysisMode",
+    "type": "string"
+  },
+  "CallGraphDirection": {
+    "description": "Direction for call-graph queries.",
+    "enum": [
+      "outgoing",
+      "incoming",
+      "both"
+    ],
+    "title": "CallGraphDirection",
+    "type": "string"
+  },
+  "QueryScope": {
+    "description": "Controls repo traversal scope for a query.",
+    "properties": {
+      "entry_repos": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Entry Repos",
+        "type": "array"
+      },
+      "max_repo_hops": {
+        "default": 2,
+        "maximum": 10,
+        "minimum": 0,
+        "title": "Max Repo Hops",
+        "type": "integer"
+      }
+    },
+    "title": "QueryScope",
+    "type": "object"
+  },
+  "RepoOverride": {
+    "description": "Per-repo runtime override settings for query execution.",
+    "properties": {
+      "compile_commands": {
+        "default": "",
+        "title": "Compile Commands",
+        "type": "string"
+      }
+    },
+    "title": "RepoOverride",
+    "type": "object"
+  },
+  "CallGraphRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /query/call-graph.",
+    "properties": {
+      "symbol": {
+        "description": "Qualified function name",
+        "title": "Symbol",
+        "type": "string"
+      },
+      "workspace_id": {
+        "description": "Workspace identifier",
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "scope": {
+        "$ref": "#/components/schemas/QueryScope"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      },
+      "direction": {
+        "$ref": "#/components/schemas/CallGraphDirection",
+        "default": "both"
+      },
+      "max_depth": {
+        "default": 3,
+        "description": "Max traversal depth",
+        "maximum": 10,
+        "minimum": 1,
+        "title": "Max Depth",
+        "type": "integer"
+      },
+      "max_recall_files": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Max Recall Files"
+      },
+      "max_parse_workers": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Max Parse Workers"
+      }
+    },
+    "required": [
+      "symbol",
+      "workspace_id"
+    ],
+    "title": "CallGraphRequest",
+    "type": "object"
+  },
+  "CallEdgeResponse": {
+    "description": "A single call edge in a call-graph response.",
+    "properties": {
+      "caller": {
+        "title": "Caller",
+        "type": "string"
+      },
+      "callee": {
+        "title": "Callee",
+        "type": "string"
+      },
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "line": {
+        "title": "Line",
+        "type": "integer"
+      },
+      "abs_path": {
+        "default": "",
+        "title": "Abs Path",
+        "type": "string"
+      },
+      "context_id": {
+        "default": "",
+        "title": "Context Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "caller",
+      "callee",
+      "file_key",
+      "line"
+    ],
+    "title": "CallEdgeResponse",
+    "type": "object"
+  },
+  "ConfidenceEnvelope": {
+    "description": "Communicates exactly how much of the codebase was semantically verified.",
+    "properties": {
+      "verified_files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Verified Files",
+        "type": "array"
+      },
+      "stale_files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Stale Files",
+        "type": "array"
+      },
+      "unparsed_files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Unparsed Files",
+        "type": "array"
+      },
+      "total_candidates": {
+        "default": 0,
+        "title": "Total Candidates",
+        "type": "integer"
+      },
+      "verified_ratio": {
+        "default": 0.0,
+        "title": "Verified Ratio",
+        "type": "number"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "overlay_mode": {
+        "$ref": "#/components/schemas/OverlayMode",
+        "default": "sparse"
+      },
+      "repo_coverage": {
+        "additionalProperties": {
+          "type": "number"
+        },
+        "title": "Repo Coverage",
+        "type": "object"
+      }
+    },
+    "title": "ConfidenceEnvelope",
+    "type": "object"
+  },
+  "OverlayMode": {
+    "description": "How overlay facts are materialized.",
+    "enum": [
+      "full",
+      "sparse",
+      "partial_overlay"
+    ],
+    "title": "OverlayMode",
+    "type": "string"
+  },
+  "CallGraphResponse": {
+    "description": "Response for /query/call-graph.",
+    "properties": {
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "edges": {
+        "items": {
+          "$ref": "#/components/schemas/CallEdgeResponse"
+        },
+        "title": "Edges",
+        "type": "array"
+      },
+      "confidence": {
+        "$ref": "#/components/schemas/ConfidenceEnvelope"
+      }
+    },
+    "required": [
+      "symbol",
+      "confidence"
+    ],
+    "title": "CallGraphResponse",
+    "type": "object"
+  },
+  "ClassifyFreshnessRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/classify-freshness.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      },
+      "candidate_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Candidate File Keys",
+        "type": "array"
+      },
+      "max_files": {
+        "default": 200,
+        "maximum": 5000,
+        "minimum": 1,
+        "title": "Max Files",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "workspace_id"
+    ],
+    "title": "ClassifyFreshnessRequest",
+    "type": "object"
+  },
+  "CompileMatchType": {
+    "description": "How compile arguments were resolved for a file.",
+    "enum": [
+      "exact",
+      "fallback",
+      "missing"
+    ],
+    "title": "CompileMatchType",
+    "type": "string"
+  },
+  "CostEnvelope": {
+    "description": "Bounded-cost accounting for an exploration primitive call.",
+    "properties": {
+      "requested": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Requested",
+        "type": "object"
+      },
+      "applied": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Applied",
+        "type": "object"
+      },
+      "consumed": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Consumed",
+        "type": "object"
+      },
+      "truncated": {
+        "default": false,
+        "title": "Truncated",
+        "type": "boolean"
+      },
+      "truncation_reasons": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Truncation Reasons",
+        "type": "array"
+      }
+    },
+    "title": "CostEnvelope",
+    "type": "object"
+  },
+  "CoverageEnvelope": {
+    "description": "Coverage metadata for partial-result aware exploration flows.",
+    "properties": {
+      "total_candidates": {
+        "default": 0,
+        "title": "Total Candidates",
+        "type": "integer"
+      },
+      "considered_candidates": {
+        "default": 0,
+        "title": "Considered Candidates",
+        "type": "integer"
+      },
+      "verified_candidates": {
+        "default": 0,
+        "title": "Verified Candidates",
+        "type": "integer"
+      },
+      "partial": {
+        "default": false,
+        "title": "Partial",
+        "type": "boolean"
+      },
+      "partial_reasons": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Partial Reasons",
+        "type": "array"
+      }
+    },
+    "title": "CoverageEnvelope",
+    "type": "object"
+  },
+  "FreshnessParseTask": {
+    "description": "Parse queue descriptor from classify-freshness.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "compile_match_type": {
+        "$ref": "#/components/schemas/CompileMatchType"
+      },
+      "flags_hash": {
+        "default": "",
+        "title": "Flags Hash",
+        "type": "string"
+      }
+    },
+    "required": [
+      "file_key",
+      "repo_id",
+      "compile_match_type"
+    ],
+    "title": "FreshnessParseTask",
+    "type": "object"
+  },
+  "ClassifyFreshnessResponse": {
+    "description": "Response for /explore/classify-freshness.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "context_id": {
+        "title": "Context Id",
+        "type": "string"
+      },
+      "baseline_context_id": {
+        "title": "Baseline Context Id",
+        "type": "string"
+      },
+      "overlay_mode": {
+        "$ref": "#/components/schemas/OverlayMode"
+      },
+      "fresh": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Fresh",
+        "type": "array"
+      },
+      "stale": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Stale",
+        "type": "array"
+      },
+      "unparsed": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Unparsed",
+        "type": "array"
+      },
+      "parse_queue": {
+        "items": {
+          "$ref": "#/components/schemas/FreshnessParseTask"
+        },
+        "title": "Parse Queue",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "context_id",
+      "baseline_context_id",
+      "overlay_mode"
+    ],
+    "title": "ClassifyFreshnessResponse",
+    "type": "object"
+  },
+  "CommitDiffSummaryRecord": {
+    "description": "Stored summary record.",
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "commit_sha": {
+        "title": "Commit Sha",
+        "type": "string"
+      },
+      "branch": {
+        "title": "Branch",
+        "type": "string"
+      },
+      "summary_text": {
+        "title": "Summary Text",
+        "type": "string"
+      },
+      "embedding_model": {
+        "title": "Embedding Model",
+        "type": "string"
+      },
+      "embedding_dim": {
+        "title": "Embedding Dim",
+        "type": "integer"
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "title": "Metadata",
+        "type": "object"
+      },
+      "created_at": {
+        "title": "Created At",
+        "type": "string"
+      },
+      "updated_at": {
+        "title": "Updated At",
+        "type": "string"
+      },
+      "embedding": {
+        "items": {
+          "type": "number"
+        },
+        "title": "Embedding",
+        "type": "array"
+      }
+    },
+    "required": [
+      "id",
+      "workspace_id",
+      "repo_id",
+      "commit_sha",
+      "branch",
+      "summary_text",
+      "embedding_model",
+      "embedding_dim",
+      "created_at",
+      "updated_at"
+    ],
+    "title": "CommitDiffSummaryRecord",
+    "type": "object"
+  },
+  "CommitDiffSummaryGetResponse": {
+    "description": "Fetch-by-key response.",
+    "properties": {
+      "found": {
+        "title": "Found",
+        "type": "boolean"
+      },
+      "record": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CommitDiffSummaryRecord"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "found"
+    ],
+    "title": "CommitDiffSummaryGetResponse",
+    "type": "object"
+  },
+  "CommitDiffSummarySearchRequest": {
+    "description": "Top-k vector search over stored commit diff summaries.",
+    "properties": {
+      "query_embedding": {
+        "items": {
+          "type": "number"
+        },
+        "title": "Query Embedding",
+        "type": "array"
+      },
+      "top_k": {
+        "default": 10,
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Top K",
+        "type": "integer"
+      },
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repo_ids": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Repo Ids",
+        "type": "array"
+      },
+      "branches": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Branches",
+        "type": "array"
+      },
+      "commit_sha_prefix": {
+        "default": "",
+        "title": "Commit Sha Prefix",
+        "type": "string"
+      },
+      "created_after": {
+        "default": "",
+        "title": "Created After",
+        "type": "string"
+      },
+      "score_threshold": {
+        "default": 0.0,
+        "title": "Score Threshold",
+        "type": "number"
+      }
+    },
+    "required": [
+      "query_embedding",
+      "workspace_id"
+    ],
+    "title": "CommitDiffSummarySearchRequest",
+    "type": "object"
+  },
+  "CommitDiffSummaryHit": {
+    "description": "Search hit entry.",
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "commit_sha": {
+        "title": "Commit Sha",
+        "type": "string"
+      },
+      "branch": {
+        "title": "Branch",
+        "type": "string"
+      },
+      "summary_text": {
+        "title": "Summary Text",
+        "type": "string"
+      },
+      "embedding_model": {
+        "title": "Embedding Model",
+        "type": "string"
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "title": "Metadata",
+        "type": "object"
+      },
+      "score": {
+        "title": "Score",
+        "type": "number"
+      },
+      "created_at": {
+        "title": "Created At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "workspace_id",
+      "repo_id",
+      "commit_sha",
+      "branch",
+      "summary_text",
+      "embedding_model",
+      "score",
+      "created_at"
+    ],
+    "title": "CommitDiffSummaryHit",
+    "type": "object"
+  },
+  "CommitDiffSummarySearchResponse": {
+    "description": "Search response envelope.",
+    "properties": {
+      "hits": {
+        "items": {
+          "$ref": "#/components/schemas/CommitDiffSummaryHit"
+        },
+        "title": "Hits",
+        "type": "array"
+      }
+    },
+    "title": "CommitDiffSummarySearchResponse",
+    "type": "object"
+  },
+  "CommitDiffSummaryUpsertRequest": {
+    "description": "Caller-provided merged commit diff summary and embedding.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "commit_sha": {
+        "title": "Commit Sha",
+        "type": "string"
+      },
+      "branch": {
+        "default": "",
+        "title": "Branch",
+        "type": "string"
+      },
+      "summary_text": {
+        "title": "Summary Text",
+        "type": "string"
+      },
+      "embedding_model": {
+        "title": "Embedding Model",
+        "type": "string"
+      },
+      "embedding": {
+        "items": {
+          "type": "number"
+        },
+        "title": "Embedding",
+        "type": "array"
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "title": "Metadata",
+        "type": "object"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "repo_id",
+      "commit_sha",
+      "summary_text",
+      "embedding_model",
+      "embedding"
+    ],
+    "title": "CommitDiffSummaryUpsertRequest",
+    "type": "object"
+  },
+  "ContextCreateOverlayRequest": {
+    "description": "Create a PR overlay context.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "pr_id": {
+        "title": "Pr Id",
+        "type": "string"
+      },
+      "base_ref": {
+        "default": "",
+        "title": "Base Ref",
+        "type": "string"
+      },
+      "head_ref": {
+        "default": "",
+        "title": "Head Ref",
+        "type": "string"
+      },
+      "context_id": {
+        "default": "",
+        "title": "Context Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "pr_id"
+    ],
+    "title": "ContextCreateOverlayRequest",
+    "type": "object"
+  },
+  "ContextCreateOverlayResponse": {
+    "description": "Overlay context creation result.",
+    "properties": {
+      "context_id": {
+        "title": "Context Id",
+        "type": "string"
+      },
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "base_context_id": {
+        "title": "Base Context Id",
+        "type": "string"
+      },
+      "overlay_mode": {
+        "$ref": "#/components/schemas/OverlayMode"
+      },
+      "overlay_file_count": {
+        "default": 0,
+        "title": "Overlay File Count",
+        "type": "integer"
+      },
+      "overlay_row_count": {
+        "default": 0,
+        "title": "Overlay Row Count",
+        "type": "integer"
+      },
+      "partial_overlay": {
+        "default": false,
+        "title": "Partial Overlay",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "context_id",
+      "workspace_id",
+      "base_context_id",
+      "overlay_mode"
+    ],
+    "title": "ContextCreateOverlayResponse",
+    "type": "object"
+  },
+  "ContextExpireResponse": {
+    "description": "Overlay context expiry response.",
+    "properties": {
+      "context_id": {
+        "title": "Context Id",
+        "type": "string"
+      },
+      "expired": {
+        "title": "Expired",
+        "type": "boolean"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "context_id",
+      "expired",
+      "message"
+    ],
+    "title": "ContextExpireResponse",
+    "type": "object"
+  },
+  "SymbolLocation": {
+    "description": "A symbol definition location in a response.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "line": {
+        "title": "Line",
+        "type": "integer"
+      },
+      "col": {
+        "title": "Col",
+        "type": "integer"
+      },
+      "kind": {
+        "title": "Kind",
+        "type": "string"
+      },
+      "qualified_name": {
+        "default": "",
+        "title": "Qualified Name",
+        "type": "string"
+      },
+      "extent_end_line": {
+        "default": 0,
+        "title": "Extent End Line",
+        "type": "integer"
+      },
+      "abs_path": {
+        "default": "",
+        "title": "Abs Path",
+        "type": "string"
+      },
+      "context_id": {
+        "default": "",
+        "title": "Context Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "file_key",
+      "line",
+      "col",
+      "kind"
+    ],
+    "title": "SymbolLocation",
+    "type": "object"
+  },
+  "DefinitionResponse": {
+    "description": "Response for /query/definition.",
+    "properties": {
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "definitions": {
+        "items": {
+          "$ref": "#/components/schemas/SymbolLocation"
+        },
+        "title": "Definitions",
+        "type": "array"
+      },
+      "confidence": {
+        "$ref": "#/components/schemas/ConfidenceEnvelope"
+      }
+    },
+    "required": [
+      "symbol",
+      "confidence"
+    ],
+    "title": "DefinitionResponse",
+    "type": "object"
+  },
+  "FetchCallEdgesRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/fetch-call-edges.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "direction": {
+        "$ref": "#/components/schemas/CallGraphDirection",
+        "default": "both"
+      },
+      "candidate_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Candidate File Keys",
+        "type": "array"
+      },
+      "excluded_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Excluded File Keys",
+        "type": "array"
+      },
+      "limit": {
+        "default": 2000,
+        "maximum": 20000,
+        "minimum": 1,
+        "title": "Limit",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "symbol"
+    ],
+    "title": "FetchCallEdgesRequest",
+    "type": "object"
+  },
+  "EvidenceItem": {
+    "description": "Evidence entry emitted by primitive exploration responses.",
+    "properties": {
+      "source": {
+        "title": "Source",
+        "type": "string"
+      },
+      "file_key": {
+        "default": "",
+        "title": "File Key",
+        "type": "string"
+      },
+      "line": {
+        "default": 0,
+        "title": "Line",
+        "type": "integer"
+      },
+      "col": {
+        "default": 0,
+        "title": "Col",
+        "type": "integer"
+      },
+      "snippet": {
+        "default": "",
+        "title": "Snippet",
+        "type": "string"
+      }
+    },
+    "required": [
+      "source"
+    ],
+    "title": "EvidenceItem",
+    "type": "object"
+  },
+  "FetchCallEdgesResponse": {
+    "description": "Response for /explore/fetch-call-edges.",
+    "properties": {
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "direction": {
+        "$ref": "#/components/schemas/CallGraphDirection"
+      },
+      "edges": {
+        "items": {
+          "$ref": "#/components/schemas/CallEdgeResponse"
+        },
+        "title": "Edges",
+        "type": "array"
+      },
+      "evidence": {
+        "items": {
+          "$ref": "#/components/schemas/EvidenceItem"
+        },
+        "title": "Evidence",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "symbol",
+      "direction"
+    ],
+    "title": "FetchCallEdgesResponse",
+    "type": "object"
+  },
+  "FetchReferencesRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/fetch-references.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "candidate_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Candidate File Keys",
+        "type": "array"
+      },
+      "excluded_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Excluded File Keys",
+        "type": "array"
+      },
+      "limit": {
+        "default": 2000,
+        "maximum": 20000,
+        "minimum": 1,
+        "title": "Limit",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "symbol"
+    ],
+    "title": "FetchReferencesRequest",
+    "type": "object"
+  },
+  "ReferenceLocation": {
+    "description": "A reference location in a response.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "line": {
+        "title": "Line",
+        "type": "integer"
+      },
+      "col": {
+        "title": "Col",
+        "type": "integer"
+      },
+      "kind": {
+        "default": "unknown",
+        "title": "Kind",
+        "type": "string"
+      },
+      "abs_path": {
+        "default": "",
+        "title": "Abs Path",
+        "type": "string"
+      },
+      "context_id": {
+        "default": "",
+        "title": "Context Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "file_key",
+      "line",
+      "col"
+    ],
+    "title": "ReferenceLocation",
+    "type": "object"
+  },
+  "FetchReferencesResponse": {
+    "description": "Response for /explore/fetch-references.",
+    "properties": {
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "references": {
+        "items": {
+          "$ref": "#/components/schemas/ReferenceLocation"
+        },
+        "title": "References",
+        "type": "array"
+      },
+      "evidence": {
+        "items": {
+          "$ref": "#/components/schemas/EvidenceItem"
+        },
+        "title": "Evidence",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "symbol"
+    ],
+    "title": "FetchReferencesResponse",
+    "type": "object"
+  },
+  "FetchSymbolsRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/fetch-symbols.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "candidate_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Candidate File Keys",
+        "type": "array"
+      },
+      "excluded_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Excluded File Keys",
+        "type": "array"
+      },
+      "limit": {
+        "default": 2000,
+        "maximum": 20000,
+        "minimum": 1,
+        "title": "Limit",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "symbol"
+    ],
+    "title": "FetchSymbolsRequest",
+    "type": "object"
+  },
+  "FetchSymbolsResponse": {
+    "description": "Response for /explore/fetch-symbols.",
+    "properties": {
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "symbols": {
+        "items": {
+          "$ref": "#/components/schemas/SymbolLocation"
+        },
+        "title": "Symbols",
+        "type": "array"
+      },
+      "evidence": {
+        "items": {
+          "$ref": "#/components/schemas/EvidenceItem"
+        },
+        "title": "Evidence",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "symbol"
+    ],
+    "title": "FetchSymbolsResponse",
+    "type": "object"
+  },
+  "FileSymbolsRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /query/file-symbols.",
+    "properties": {
+      "file_key": {
+        "description": "Canonical file key: repo_id:rel/path.cpp",
+        "title": "File Key",
+        "type": "string"
+      },
+      "workspace_id": {
+        "description": "Workspace identifier",
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      }
+    },
+    "required": [
+      "file_key",
+      "workspace_id"
+    ],
+    "title": "FileSymbolsRequest",
+    "type": "object"
+  },
+  "FileSymbolsResponse": {
+    "description": "Response for /query/file-symbols.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "symbols": {
+        "items": {
+          "$ref": "#/components/schemas/SymbolLocation"
+        },
+        "title": "Symbols",
+        "type": "array"
+      },
+      "confidence": {
+        "$ref": "#/components/schemas/ConfidenceEnvelope"
+      }
+    },
+    "required": [
+      "file_key",
+      "confidence"
+    ],
+    "title": "FileSymbolsResponse",
+    "type": "object"
+  },
+  "GetCompileCommandRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/get-compile-command.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "file_key"
+    ],
+    "title": "GetCompileCommandRequest",
+    "type": "object"
+  },
+  "GetCompileCommandResponse": {
+    "description": "Response for /explore/get-compile-command.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "compile_db_path": {
+        "default": "",
+        "title": "Compile Db Path",
+        "type": "string"
+      },
+      "match_type": {
+        "$ref": "#/components/schemas/CompileMatchType",
+        "default": "missing"
+      },
+      "cwd": {
+        "default": "",
+        "title": "Cwd",
+        "type": "string"
+      },
+      "args": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Args",
+        "type": "array"
+      },
+      "flags_hash": {
+        "default": "",
+        "title": "Flags Hash",
+        "type": "string"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      }
+    },
+    "required": [
+      "file_key"
+    ],
+    "title": "GetCompileCommandResponse",
+    "type": "object"
+  },
+  "GetConfidenceRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/get-confidence.",
+    "properties": {
+      "verified_files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Verified Files",
+        "type": "array"
+      },
+      "stale_files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Stale Files",
+        "type": "array"
+      },
+      "unparsed_files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Unparsed Files",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "overlay_mode": {
+        "$ref": "#/components/schemas/OverlayMode",
+        "default": "sparse"
+      }
+    },
+    "title": "GetConfidenceRequest",
+    "type": "object"
+  },
+  "GetConfidenceResponse": {
+    "description": "Response for /explore/get-confidence.",
+    "properties": {
+      "confidence": {
+        "$ref": "#/components/schemas/ConfidenceEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "confidence"
+    ],
+    "title": "GetConfidenceResponse",
+    "type": "object"
+  },
+  "HealthResponse": {
+    "description": "Response for /health.",
+    "properties": {
+      "status": {
+        "default": "ok",
+        "title": "Status",
+        "type": "string"
+      },
+      "version": {
+        "title": "Version",
+        "type": "string"
+      },
+      "cache_file_count": {
+        "default": 0,
+        "title": "Cache File Count",
+        "type": "integer"
+      },
+      "cache_symbol_count": {
+        "default": 0,
+        "title": "Cache Symbol Count",
+        "type": "integer"
+      },
+      "rg_available": {
+        "default": false,
+        "title": "Rg Available",
+        "type": "boolean"
+      },
+      "rg_version": {
+        "default": "",
+        "title": "Rg Version",
+        "type": "string"
+      },
+      "extractor_available": {
+        "default": false,
+        "title": "Extractor Available",
+        "type": "boolean"
+      },
+      "writer_queue_depth": {
+        "default": 0,
+        "title": "Writer Queue Depth",
+        "type": "integer"
+      },
+      "writer_lag_ms": {
+        "default": 0.0,
+        "title": "Writer Lag Ms",
+        "type": "number"
+      },
+      "active_context_count": {
+        "default": 0,
+        "title": "Active Context Count",
+        "type": "integer"
+      },
+      "overlay_disk_usage_bytes": {
+        "default": 0,
+        "title": "Overlay Disk Usage Bytes",
+        "type": "integer"
+      },
+      "index_queue_depth": {
+        "default": 0,
+        "title": "Index Queue Depth",
+        "type": "integer"
+      },
+      "oldest_pending_job_age_s": {
+        "default": 0.0,
+        "title": "Oldest Pending Job Age S",
+        "type": "number"
+      },
+      "sync_queue_depth": {
+        "default": 0,
+        "title": "Sync Queue Depth",
+        "type": "integer"
+      },
+      "active_sync_jobs": {
+        "default": 0,
+        "title": "Active Sync Jobs",
+        "type": "integer"
+      },
+      "last_sync_failure_count_1h": {
+        "default": 0,
+        "title": "Last Sync Failure Count 1H",
+        "type": "integer"
+      },
+      "sqlite_vec_loaded": {
+        "default": false,
+        "title": "Sqlite Vec Loaded",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "version"
+    ],
+    "title": "HealthResponse",
+    "type": "object"
+  },
+  "ListCandidatesRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/list-candidates.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "symbol": {
+        "minLength": 1,
+        "title": "Symbol",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "scope": {
+        "$ref": "#/components/schemas/QueryScope"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      },
+      "max_files": {
+        "default": 200,
+        "maximum": 5000,
+        "minimum": 1,
+        "title": "Max Files",
+        "type": "integer"
+      },
+      "include_rg": {
+        "default": true,
+        "title": "Include Rg",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "symbol"
+    ],
+    "title": "ListCandidatesRequest",
+    "type": "object"
+  },
+  "CandidateProvenance": {
+    "description": "Provenance summary for one merged candidate.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "sources": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Sources",
+        "type": "array"
+      }
+    },
+    "required": [
+      "file_key"
+    ],
+    "title": "CandidateProvenance",
+    "type": "object"
+  },
+  "ListCandidatesResponse": {
+    "description": "Response for /explore/list-candidates.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "context_id": {
+        "title": "Context Id",
+        "type": "string"
+      },
+      "baseline_context_id": {
+        "title": "Baseline Context Id",
+        "type": "string"
+      },
+      "overlay_mode": {
+        "$ref": "#/components/schemas/OverlayMode"
+      },
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "candidates": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Candidates",
+        "type": "array"
+      },
+      "deleted_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Deleted File Keys",
+        "type": "array"
+      },
+      "provenance": {
+        "items": {
+          "$ref": "#/components/schemas/CandidateProvenance"
+        },
+        "title": "Provenance",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "context_id",
+      "baseline_context_id",
+      "overlay_mode",
+      "symbol"
+    ],
+    "title": "ListCandidatesResponse",
+    "type": "object"
+  },
+  "ParseFileRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/parse-file.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      },
+      "file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "File Keys",
+        "type": "array"
+      },
+      "max_parse_workers": {
+        "default": 1,
+        "maximum": 128,
+        "minimum": 1,
+        "title": "Max Parse Workers",
+        "type": "integer"
+      },
+      "timeout_s": {
+        "default": 120,
+        "maximum": 600,
+        "minimum": 1,
+        "title": "Timeout S",
+        "type": "integer"
+      },
+      "skip_if_fresh": {
+        "default": true,
+        "title": "Skip If Fresh",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "workspace_id"
+    ],
+    "title": "ParseFileRequest",
+    "type": "object"
+  },
+  "ParseFileResponse": {
+    "description": "Response for /explore/parse-file.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "context_id": {
+        "title": "Context Id",
+        "type": "string"
+      },
+      "baseline_context_id": {
+        "title": "Baseline Context Id",
+        "type": "string"
+      },
+      "overlay_mode": {
+        "$ref": "#/components/schemas/OverlayMode"
+      },
+      "parsed_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Parsed File Keys",
+        "type": "array"
+      },
+      "failed_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Failed File Keys",
+        "type": "array"
+      },
+      "skipped_fresh_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Skipped Fresh File Keys",
+        "type": "array"
+      },
+      "unparsed_file_keys": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Unparsed File Keys",
+        "type": "array"
+      },
+      "parse_warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Parse Warnings",
+        "type": "array"
+      },
+      "persisted_fact_rows": {
+        "default": 0,
+        "title": "Persisted Fact Rows",
+        "type": "integer"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "context_id",
+      "baseline_context_id",
+      "overlay_mode"
+    ],
+    "title": "ParseFileResponse",
+    "type": "object"
+  },
+  "ReadFileRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/read-file.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "start_line": {
+        "default": 1,
+        "minimum": 1,
+        "title": "Start Line",
+        "type": "integer"
+      },
+      "end_line": {
+        "default": 0,
+        "description": "0 means until EOF",
+        "minimum": 0,
+        "title": "End Line",
+        "type": "integer"
+      },
+      "max_bytes": {
+        "default": 65536,
+        "maximum": 2000000,
+        "minimum": 1,
+        "title": "Max Bytes",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "file_key"
+    ],
+    "title": "ReadFileRequest",
+    "type": "object"
+  },
+  "ReadFileResponse": {
+    "description": "Response for /explore/read-file.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "abs_path": {
+        "default": "",
+        "title": "Abs Path",
+        "type": "string"
+      },
+      "content": {
+        "default": "",
+        "title": "Content",
+        "type": "string"
+      },
+      "truncated": {
+        "default": false,
+        "title": "Truncated",
+        "type": "boolean"
+      },
+      "line_range": {
+        "items": {
+          "type": "integer"
+        },
+        "title": "Line Range",
+        "type": "array"
+      },
+      "content_hash": {
+        "default": "",
+        "title": "Content Hash",
+        "type": "string"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      }
+    },
+    "required": [
+      "file_key"
+    ],
+    "title": "ReadFileResponse",
+    "type": "object"
+  },
+  "ReferencesResponse": {
+    "description": "Response for /query/references.",
+    "properties": {
+      "symbol": {
+        "title": "Symbol",
+        "type": "string"
+      },
+      "definition": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SymbolLocation"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "references": {
+        "items": {
+          "$ref": "#/components/schemas/ReferenceLocation"
+        },
+        "title": "References",
+        "type": "array"
+      },
+      "confidence": {
+        "$ref": "#/components/schemas/ConfidenceEnvelope"
+      }
+    },
+    "required": [
+      "symbol",
+      "confidence"
+    ],
+    "title": "ReferencesResponse",
+    "type": "object"
+  },
+  "RepoSyncAllRequest": {
+    "description": "Sync all sync-enabled repos declared in workspace manifest.",
+    "properties": {
+      "force_clean": {
+        "default": true,
+        "title": "Force Clean",
+        "type": "boolean"
+      }
+    },
+    "title": "RepoSyncAllRequest",
+    "type": "object"
+  },
+  "RepoSyncJobResponse": {
+    "description": "Response describing sync job status.",
+    "properties": {
+      "job_id": {
+        "title": "Job Id",
+        "type": "string"
+      },
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "requested_commit_sha": {
+        "title": "Requested Commit Sha",
+        "type": "string"
+      },
+      "requested_branch": {
+        "default": "",
+        "title": "Requested Branch",
+        "type": "string"
+      },
+      "requested_force_clean": {
+        "default": true,
+        "title": "Requested Force Clean",
+        "type": "boolean"
+      },
+      "resolved_commit_sha": {
+        "default": "",
+        "title": "Resolved Commit Sha",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/components/schemas/RepoSyncJobStatus"
+      },
+      "attempts": {
+        "default": 0,
+        "title": "Attempts",
+        "type": "integer"
+      },
+      "max_attempts": {
+        "default": 0,
+        "title": "Max Attempts",
+        "type": "integer"
+      },
+      "error_code": {
+        "default": "",
+        "title": "Error Code",
+        "type": "string"
+      },
+      "error_message": {
+        "default": "",
+        "title": "Error Message",
+        "type": "string"
+      },
+      "created_at": {
+        "default": "",
+        "title": "Created At",
+        "type": "string"
+      },
+      "updated_at": {
+        "default": "",
+        "title": "Updated At",
+        "type": "string"
+      },
+      "started_at": {
+        "default": "",
+        "title": "Started At",
+        "type": "string"
+      },
+      "finished_at": {
+        "default": "",
+        "title": "Finished At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "job_id",
+      "workspace_id",
+      "repo_id",
+      "requested_commit_sha",
+      "status"
+    ],
+    "title": "RepoSyncJobResponse",
+    "type": "object"
+  },
+  "RepoSyncJobStatus": {
+    "description": "Lifecycle state for a repo sync job.",
+    "enum": [
+      "pending",
+      "running",
+      "done",
+      "failed",
+      "dead_letter"
+    ],
+    "title": "RepoSyncJobStatus",
+    "type": "string"
+  },
+  "RepoSyncAllResponse": {
+    "description": "Manifest-driven sync-all response.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "jobs": {
+        "items": {
+          "$ref": "#/components/schemas/RepoSyncJobResponse"
+        },
+        "title": "Jobs",
+        "type": "array"
+      },
+      "skipped_repos": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Skipped Repos",
+        "type": "array"
+      }
+    },
+    "required": [
+      "workspace_id"
+    ],
+    "title": "RepoSyncAllResponse",
+    "type": "object"
+  },
+  "RepoSyncRequest": {
+    "description": "Request for deterministic repo sync at exact commit SHA.",
+    "properties": {
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "commit_sha": {
+        "title": "Commit Sha",
+        "type": "string"
+      },
+      "branch": {
+        "default": "",
+        "title": "Branch",
+        "type": "string"
+      },
+      "force_clean": {
+        "default": true,
+        "title": "Force Clean",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "repo_id",
+      "commit_sha"
+    ],
+    "title": "RepoSyncRequest",
+    "type": "object"
+  },
+  "RepoSyncBatchRequest": {
+    "description": "Batch sync request for multiple repositories.",
+    "properties": {
+      "targets": {
+        "items": {
+          "$ref": "#/components/schemas/RepoSyncRequest"
+        },
+        "minItems": 1,
+        "title": "Targets",
+        "type": "array"
+      }
+    },
+    "required": [
+      "targets"
+    ],
+    "title": "RepoSyncBatchRequest",
+    "type": "object"
+  },
+  "RepoSyncBatchResponse": {
+    "description": "Batch enqueue result.",
+    "properties": {
+      "jobs": {
+        "items": {
+          "$ref": "#/components/schemas/RepoSyncJobResponse"
+        },
+        "title": "Jobs",
+        "type": "array"
+      }
+    },
+    "title": "RepoSyncBatchResponse",
+    "type": "object"
+  },
+  "RepoSyncStatusResponse": {
+    "description": "Latest sync status for a repository.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "last_synced_commit_sha": {
+        "default": "",
+        "title": "Last Synced Commit Sha",
+        "type": "string"
+      },
+      "last_synced_branch": {
+        "default": "",
+        "title": "Last Synced Branch",
+        "type": "string"
+      },
+      "last_success_at": {
+        "default": "",
+        "title": "Last Success At",
+        "type": "string"
+      },
+      "last_failure_at": {
+        "default": "",
+        "title": "Last Failure At",
+        "type": "string"
+      },
+      "last_error_code": {
+        "default": "",
+        "title": "Last Error Code",
+        "type": "string"
+      },
+      "last_error_message": {
+        "default": "",
+        "title": "Last Error Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "repo_id"
+    ],
+    "title": "RepoSyncStatusResponse",
+    "type": "object"
+  },
+  "RgSearchMode": {
+    "description": "Query mode for lexical recall.",
+    "enum": [
+      "symbol",
+      "regex",
+      "literal"
+    ],
+    "title": "RgSearchMode",
+    "type": "string"
+  },
+  "RgSearchRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /explore/rg-search.",
+    "properties": {
+      "workspace_id": {
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "query": {
+        "minLength": 1,
+        "title": "Query",
+        "type": "string"
+      },
+      "mode": {
+        "$ref": "#/components/schemas/RgSearchMode",
+        "default": "symbol"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "scope": {
+        "$ref": "#/components/schemas/QueryScope"
+      },
+      "max_hits": {
+        "default": 200,
+        "maximum": 2000,
+        "minimum": 1,
+        "title": "Max Hits",
+        "type": "integer"
+      },
+      "max_files": {
+        "default": 200,
+        "maximum": 2000,
+        "minimum": 1,
+        "title": "Max Files",
+        "type": "integer"
+      },
+      "timeout_s": {
+        "default": 30,
+        "maximum": 300,
+        "minimum": 1,
+        "title": "Timeout S",
+        "type": "integer"
+      },
+      "context_lines": {
+        "default": 0,
+        "maximum": 10,
+        "minimum": 0,
+        "title": "Context Lines",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "query"
+    ],
+    "title": "RgSearchRequest",
+    "type": "object"
+  },
+  "RgSearchHit": {
+    "description": "Single rg hit mapped into canonical workspace identity.",
+    "properties": {
+      "file_key": {
+        "title": "File Key",
+        "type": "string"
+      },
+      "repo_id": {
+        "title": "Repo Id",
+        "type": "string"
+      },
+      "abs_path": {
+        "title": "Abs Path",
+        "type": "string"
+      },
+      "line": {
+        "title": "Line",
+        "type": "integer"
+      },
+      "line_text": {
+        "default": "",
+        "title": "Line Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "file_key",
+      "repo_id",
+      "abs_path",
+      "line"
+    ],
+    "title": "RgSearchHit",
+    "type": "object"
+  },
+  "RgSearchResponse": {
+    "description": "Response for /explore/rg-search.",
+    "properties": {
+      "hits": {
+        "items": {
+          "$ref": "#/components/schemas/RgSearchHit"
+        },
+        "title": "Hits",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "cost": {
+        "$ref": "#/components/schemas/CostEnvelope"
+      },
+      "evidence": {
+        "items": {
+          "$ref": "#/components/schemas/EvidenceItem"
+        },
+        "title": "Evidence",
+        "type": "array"
+      },
+      "coverage": {
+        "$ref": "#/components/schemas/CoverageEnvelope"
+      }
+    },
+    "title": "RgSearchResponse",
+    "type": "object"
+  },
+  "SymbolQueryRequest": {
+    "additionalProperties": false,
+    "description": "Request body for /query/references and /query/definition.",
+    "properties": {
+      "symbol": {
+        "description": "Qualified or unqualified C++ symbol name",
+        "title": "Symbol",
+        "type": "string"
+      },
+      "workspace_id": {
+        "description": "Workspace identifier",
+        "minLength": 1,
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "analysis_context": {
+        "$ref": "#/components/schemas/AnalysisContextSpec"
+      },
+      "scope": {
+        "$ref": "#/components/schemas/QueryScope"
+      },
+      "repo_overrides": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/RepoOverride"
+        },
+        "title": "Repo Overrides",
+        "type": "object"
+      },
+      "max_recall_files": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Override max candidate files from recall",
+        "title": "Max Recall Files"
+      },
+      "max_parse_workers": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Override max concurrent cpp-extractor processes",
+        "title": "Max Parse Workers"
+      }
+    },
+    "required": [
+      "symbol",
+      "workspace_id"
+    ],
+    "title": "SymbolQueryRequest",
+    "type": "object"
+  },
+  "WebhookGitLabRequest": {
+    "description": "Generic GitLab webhook payload wrapper.",
+    "properties": {
+      "event_type": {
+        "title": "Event Type",
+        "type": "string"
+      },
+      "payload": {
+        "additionalProperties": true,
+        "title": "Payload",
+        "type": "object"
+      }
+    },
+    "required": [
+      "event_type"
+    ],
+    "title": "WebhookGitLabRequest",
+    "type": "object"
+  },
+  "WebhookGitLabResponse": {
+    "description": "GitLab webhook ingestion response.",
+    "properties": {
+      "accepted": {
+        "title": "Accepted",
+        "type": "boolean"
+      },
+      "index_job_id": {
+        "default": "",
+        "title": "Index Job Id",
+        "type": "string"
+      },
+      "sync_job_id": {
+        "default": "",
+        "title": "Sync Job Id",
+        "type": "string"
+      },
+      "message": {
+        "default": "",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "accepted"
+    ],
+    "title": "WebhookGitLabResponse",
+    "type": "object"
+  },
+  "WorkspaceInfoResponse": {
+    "description": "Workspace details.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "root_path": {
+        "title": "Root Path",
+        "type": "string"
+      },
+      "manifest_path": {
+        "title": "Manifest Path",
+        "type": "string"
+      },
+      "repos": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Repos",
+        "type": "array"
+      },
+      "contexts": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Contexts",
+        "type": "array"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "root_path",
+      "manifest_path"
+    ],
+    "title": "WorkspaceInfoResponse",
+    "type": "object"
+  },
+  "WorkspaceRefreshResponse": {
+    "description": "Manifest refresh result.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "repos_synced": {
+        "title": "Repos Synced",
+        "type": "integer"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "repos_synced",
+      "message"
+    ],
+    "title": "WorkspaceRefreshResponse",
+    "type": "object"
+  },
+  "WorkspaceRegisterRequest": {
+    "description": "Register a workspace and its manifest path.",
+    "properties": {
+      "workspace_id": {
+        "title": "Workspace Id",
+        "type": "string"
+      },
+      "root_path": {
+        "title": "Root Path",
+        "type": "string"
+      },
+      "manifest_path": {
+        "default": "",
+        "title": "Manifest Path",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace_id",
+      "root_path"
+    ],
+    "title": "WorkspaceRegisterRequest",
+    "type": "object"
+  }
+}
